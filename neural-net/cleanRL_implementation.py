@@ -4,18 +4,17 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 
-from customEnv import CustomEnv
+from env.customEnv import CustomEnv
 
 from poke_env.player import RandomPlayer
 from poke_env.player.player import Player
 from poke_env.environment.doubles_env import DoublesEnv
 from poke_env import AccountConfiguration
 
-from poke_env import cross_evaluate
 from tabulate import tabulate
 import asyncio
 
-fixed = False
+fixed = True
 if(fixed):
     format="gen9doublesou"
     #Define the teams
@@ -45,6 +44,7 @@ class Agent(nn.Module):
         )
         self.actor = self._layer_init(nn.Linear(36, num_actions), std=0.01)
         self.critic = self._layer_init(nn.Linear(36, 1))
+        self.mode=mode
 
     def _layer_init(self, layer, std=np.sqrt(2), bias_const=0.0):
         torch.nn.init.orthogonal_(layer.weight, std)
@@ -64,7 +64,7 @@ class Agent(nn.Module):
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         
-        #probsCopy=Categorical(logits=logits)
+        probsCopy=Categorical(logits=logits)
         if(action is None):
             #mask probs here
             if(not probs.probs[x[1]==1].any()):
@@ -74,7 +74,7 @@ class Agent(nn.Module):
                 probs.probs=probs.probs*x[1]
             probs.probs=torch.nan_to_num(probs.probs)
             #Normalize back to sum to 1, needed to reapply to Categorical
-            if(mode==0):
+            if(self.mode==0):
                 probs.probs=probs.probs/probs.probs.sum()
             else:
                 probs.probs[0] = probs.probs[0]/probs.probs[0].sum()
@@ -85,13 +85,14 @@ class Agent(nn.Module):
             
             #Need to filter for when turn is "wait"
             
-            if(env.battle1._wait):
-                if(mode==0):
+            """if(env.battle1._wait):
+                if(self.mode==0):
                     probs.probs[0]=1
                 else:
                     probs.probs[0][0]=1  
-            if(mode!=0 and env.battle2._wait):
+            if(self.mode!=0 and env.battle2._wait):
                 probs.probs[1][0]=1
+                """
             
             """if(not probs.probs.any()):
                 if(mode==0):
@@ -106,23 +107,12 @@ class Agent(nn.Module):
 
 def batchify_obs(obs, device,mode=0):
     """Converts PZ style observations to batch of torch arrays."""
-    
-
-
     # convert to list of np arrays
     mask = {a:obs[a]["action_mask"] for a in obs}
     obs = remove_mask(obs)
-
-    if(mode==0):
-        #Random p2
-        #Sets obs to remove p2s observations and mask
-        agents = [a for a in obs]
-        obs = obs[agents[0]]
-        mask = mask[agents[0]]
-
     #Dont actually remove mask, save for later
-    #obs = np.stack([obs[a] for a in obs], axis=0)
-    #mask = np.stack([mask[a] for a in mask], axis=0)
+    obs = np.stack([obs[a] for a in obs], axis=0)
+    mask = np.stack([mask[a] for a in mask], axis=0)
 
     # Our observations are agent:obs
     #Keep this, no need for transpose
@@ -131,6 +121,13 @@ def batchify_obs(obs, device,mode=0):
     # convert to torch
     mask = torch.tensor(mask).to(device)
     obs = torch.tensor(obs).to(device)
+
+    
+    if(mode==0):
+        #Random p2
+        #Sets obs to remove p2s observations and mask
+        obs = obs[0]
+        mask = mask[0]
 
     return (obs,mask)
 
@@ -159,9 +156,14 @@ def unbatchify(x, env):
 
 class AlgoPlayer(Player):
     def __init__(self,state_path,num_actions=11449,informat="gen9randomdoublesbattle",inteam=None):
-        self.agent=Agent(num_actions=num_actions).to(device)
-        self.agent.load_state_dict(torch.load(f"{state_path}/agent.pt",map_location=device))
+
+        #NN Agent:
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.agent=Agent(num_actions=num_actions).to(self.device)
+        self.agent.load_state_dict(torch.load(f"{state_path}/agent.pt",map_location=self.device))
         self.agent.eval()
+
+
         self.function_env=CustomEnv()
         super().__init__(battle_format=informat,team=inteam)
 
@@ -177,14 +179,24 @@ class AlgoPlayer(Player):
         #mask = np.stack([mask[a] for a in mask], axis=0)
 
         # convert to torch
-        mask = torch.tensor(mask).to(device)
-        obs = torch.tensor(obs).to(device)
+        mask = torch.tensor(mask).to(self.device)
+        obs = torch.tensor(obs).to(self.device)
         obs = (obs,mask)
         """End replacement of batchify_obs"""
+        
+        #print(obs[0])
 
-        actions, logprobs, _, values = agent.get_action_and_value(obs)
+        #Get action using the agent, Replace with other logic if needed
+        actions, logprobs, _, values = self.agent.get_action_and_value(obs)
         actions=actions.cpu().numpy()
+
+        #Parse single action into two actions
         actions=(actions//107,actions%107)
+
+        #print(mask.nonzero())
+        #print(actions)
+
+        #Turn tuple of numbers into words processed by the env
         return DoublesEnv.action_to_order(action=actions,battle=battle)
 
 
@@ -210,7 +222,7 @@ if __name__ == "__main__":
     observation_num=18
     
     max_cycles = 125
-    total_episodes = 10000
+    total_episodes = 1024
 
     """ ENV SETUP """
     if(fixed):
@@ -388,7 +400,7 @@ if __name__ == "__main__":
 
 
     #Save model
-    state_path= "./models/testing"
+    state_path= "./models/setup"
     torch.save(agent.state_dict(), f"{state_path}/agent.pt")
 
     """ RENDER THE POLICY """
@@ -448,3 +460,4 @@ if __name__ == "__main__":
         print(
         f"Player {myPlayer.username} won {myPlayer.n_won_battles} out of {myPlayer.n_finished_battles} played"
 )
+
