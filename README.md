@@ -24,4 +24,5 @@ This will simulate one game with random input that can be viewed in the browser.
 This is good for debugging the customEnv class as it steps through moves in a battle.
 
 For an example of how to setup learning, check ./neural-net/cleanRL_implementation.py
+
 For an example of how to setup a poke-env player, check ./neural-net/NN_AlgoPlayer.py, or look at the poke-env docs.
