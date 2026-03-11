@@ -26,4 +26,4 @@ This is good for debugging the customEnv class as it steps through moves in a ba
 
 For an example of how to setup learning, check ./neural-net/cleanRL_implementation.py
 
-For an example of how to setup a poke-env player, check ./neural-net/NN_AlgoPlayer.py, or look at the poke-env docs.
+For an example of how to setup a poke-env player, check ./neural-net/NN_AlgoPlayer.py, or look at the poke-env docs @ https://poke-env.readthedocs.io/en/stable/
