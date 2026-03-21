@@ -45,6 +45,12 @@ class Agent(nn.Module):
         self.actor = self._layer_init(nn.Linear(36, num_actions), std=0.01)
         self.critic = self._layer_init(nn.Linear(36, 1))
         self.mode=mode
+        """Modes:
+        The mode changes the handling of the env input. In some modes, only one player is handled in the env.
+        Playing on a validation set versus a real person also runs into some issues, so that requires another switch.
+        Mode 0: Random p2, training set
+        Mode 1: vs. player validation mode
+        """
 
     def _layer_init(self, layer, std=np.sqrt(2), bias_const=0.0):
         torch.nn.init.orthogonal_(layer.weight, std)
@@ -74,7 +80,7 @@ class Agent(nn.Module):
                 probs.probs=probs.probs*x[1]
             probs.probs=torch.nan_to_num(probs.probs)
             #Normalize back to sum to 1, needed to reapply to Categorical
-            if(self.mode==0):
+            if(self.mode==0 or self.mode==1):
                 probs.probs=probs.probs/probs.probs.sum()
             else:
                 probs.probs[0] = probs.probs[0]/probs.probs[0].sum()
@@ -85,20 +91,20 @@ class Agent(nn.Module):
             
             #Need to filter for when turn is "wait"
             
-            """if(env.battle1._wait):
-                if(self.mode==0):
-                    probs.probs[0]=1
-                else:
-                    probs.probs[0][0]=1  
-            if(self.mode!=0 and env.battle2._wait):
-                probs.probs[1][0]=1
-                """
-            
-            if(not probs.probs.any()):
-                if(mode==0):
-                   probs.probs[0]=1
-                else:
-                   probs.probs[0][0]=1
+            if(self.mode!=1):
+                if(env.battle1._wait):
+                    if(self.mode==0):
+                        probs.probs[0]=1
+                    else:
+                        probs.probs[0][0]=1  
+                if(self.mode!=0 and env.battle2._wait):
+                    probs.probs[1][0]=1
+                    
+                if(not probs.probs.any()):
+                    if(mode==0):
+                        probs.probs[0]=1
+                    else:
+                        probs.probs[0][0]=1
 
         if action is None:
              action = probs.sample()
@@ -400,7 +406,7 @@ if __name__ == "__main__":
 
 
     #Save model
-    state_path= "./models/setup"
+    state_path= "./models/testing"
     torch.save(agent.state_dict(), f"{state_path}/agent.pt")
 
     """ RENDER THE POLICY """
