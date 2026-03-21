@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.categorical import Categorical
 
-from env.customEnv import CustomEnv
+from customEnv import CustomEnv
 
 from poke_env.player import RandomPlayer
 from poke_env.player.player import Player
@@ -94,11 +94,11 @@ class Agent(nn.Module):
                 probs.probs[1][0]=1
                 """
             
-            """if(not probs.probs.any()):
+            if(not probs.probs.any()):
                 if(mode==0):
                    probs.probs[0]=1
                 else:
-                   probs.probs[0][0]=1"""
+                   probs.probs[0][0]=1
 
         if action is None:
              action = probs.sample()

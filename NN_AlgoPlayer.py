@@ -1,6 +1,6 @@
 #Needed for playing
 from poke_env.player import Player
-from env.customEnv import CustomEnv
+from customEnv import CustomEnv
 from poke_env.environment import DoublesEnv
 
 #Needed for neural net specifically, could be replaced
