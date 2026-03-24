@@ -1,9 +1,9 @@
 from customEnv import CustomEnv
 
 def episode():
-    #pettingzoo env
-
-    parallel_env = CustomEnv(render_mode="human")
+    #alt: "human"
+    render_mode=None
+    parallel_env = CustomEnv(render_mode=render_mode)
     observations,info=parallel_env.reset()
 
     while parallel_env.agents:

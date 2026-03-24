@@ -8,6 +8,7 @@ from gymnasium.spaces import Discrete
 from poke_env.battle import AbstractBattle
 from poke_env.battle.double_battle import DoubleBattle
 from poke_env.environment.env import ObsType
+from poke_env.battle.pokemon import Pokemon
 
 from poke_env.ps_client import (
     AccountConfiguration,
@@ -115,6 +116,18 @@ class CustomEnv(DoublesEnv):
         action_mask_combined=np.array(action_mask_combined,dtype=np.int8)
         return action_mask_combined
 
+
+
+    def embed_pokemon(self, pokemon: Pokemon):
+        #current number of tracked observations, used for unknown pokemon
+        
+        if(pokemon==None):
+            #Default returns
+            return [
+                    0, #not active
+            pokemon.active,
+            pokemon.current_hp_fraction,
+        ]
     
     def embed_battle(self, battle: AbstractBattle) -> tuple[ObsType,dict[int:int]]:
         """
@@ -170,7 +183,22 @@ class CustomEnv(DoublesEnv):
             len([mon for mon in battle.opponent_team.values() if mon.fainted]) / 6
         )
 
+        
+        team_mons=[]
+        for self_mon in battle.team.values():
+            team_mons.append(self.embed_pokemon(self_mon))
 
+        team_mons=np.concatenate(team_mons)
+
+        opponent_mons=[]
+        for opp_mon in battle.opponent_team.values():
+            opponent_mons.append(self.embed_pokemon(opp_mon))
+
+        #if unknown on other mons:
+        for i in range(6-len(opponent_mons)):
+            opponent_mons.append(self.embed_pokemon(None))
+
+        opponent_mons=np.concatenate(opponent_mons)
 
         # Final vector with n components
         final_vector = np.concatenate(
@@ -178,6 +206,8 @@ class CustomEnv(DoublesEnv):
                 moves_base_power, #The eight available moves
                 moves_dmg_multiplier, #For each available move, the damage multiplier against the active pokemon
                 [fainted_mon_team, fainted_mon_opponent], #The fainted pokemon on each team
+                team_mons,
+                opponent_mons,
             ]
         )
 
@@ -235,5 +265,6 @@ class CustomEnv(DoublesEnv):
                         ]
                     ),
                 ),
-                end="\n" if self.battle1.finished else "\r",
+                end="\n",
+                # end="\n" if self.battle1.finished else "\r",
             )
