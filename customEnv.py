@@ -21,6 +21,10 @@ import webbrowser
 
 from time import sleep
 
+import pickle
+
+from collections import defaultdict
+
 class CustomEnv(DoublesEnv):
     metadata={}
 
@@ -71,6 +75,21 @@ class CustomEnv(DoublesEnv):
         }
         self.render_browser_open=False
         self.render_mode=render_mode
+
+        #Load in dicts
+        self.itemMapPath="mappings/itemDict.txt"
+        try:
+            with open(self.itemMapPath, "rb") as itemFile:
+                self.item_dict = pickle.load(itemFile)
+                self.item_dict = defaultdict(str,self.item_dict)
+        except:
+            self.item_dict=defaultdict(str)
+            self.item_dict['unknown_item']=-1
+            with open(self.itemMapPath,"wb") as itemFile:
+                pickle.dump(self.item_dict, itemFile)
+        
+        self.item_dict_index=len(self.item_dict)-1
+        
     
     def reset(self,seed=None,options=None):
         self.render_browser_open = False
@@ -125,8 +144,32 @@ class CustomEnv(DoublesEnv):
             #Default returns
             return [
                     0, #not active
+                    1.0, #full hp
+                    -1.0, #unknown_item
+            ]
+        
+        #Embed mappings and check if they need to be updated to files:
+
+        #Item:
+        if(pokemon.item in self.item_dict):
+            item=self.item_dict[pokemon.item]
+        else: #new item
+            item=self.item_dict_index
+            #add to dict
+            self.item_dict[pokemon.item]=self.item_dict_index
+            #increase index
+            self.item_dict_index=self.item_dict_index+1
+            #save to file now, avoids rewriting later if this run is terminated early
+            #Will be slow in first iterations, but cost nothing later once most items are added
+            with open(self.itemMapPath,"wb") as itemFile:
+                pickle.dump(self.item_dict, itemFile)
+        
+
+
+        return [
             pokemon.active,
             pokemon.current_hp_fraction,
+            item
         ]
     
     def embed_battle(self, battle: AbstractBattle) -> tuple[ObsType,dict[int:int]]:
