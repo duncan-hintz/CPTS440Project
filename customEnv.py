@@ -16,6 +16,8 @@ from poke_env.ps_client import (
 )
 from poke_env.teambuilder import Teambuilder
 
+from poke_env.data import GenData #poke-env update
+
 import webbrowser
 
 from time import sleep
@@ -65,6 +67,7 @@ class CustomEnv(DoublesEnv):
             fake=fake,
             strict=strict,
         )
+        self.gen_data = GenData.from_format(battle_format) #poke-env update
         self.action_spaces = {
             agent: Discrete(107*107) for agent in self.possible_agents
         }
@@ -144,11 +147,11 @@ class CustomEnv(DoublesEnv):
             )  # Simple rescaling to facilitate learning
             if battle.opponent_active_pokemon[0] is not None:
                 for active_pokemon in battle.opponent_active_pokemon:
-                    if(active_pokemon !=None):
+                    if active_pokemon is not None:
                         moves_dmg_multiplier[i] = move.type.damage_multiplier(
                             active_pokemon.type_1,
                             active_pokemon.type_2,
-                            type_chart=active_pokemon._data.type_chart,
+                            type_chart=self.gen_data.type_chart, #new Poke-env updated version
                         )
         for j, move in enumerate(battle.available_moves[1]):
             moves_base_power[3+j] = (
@@ -156,11 +159,11 @@ class CustomEnv(DoublesEnv):
             )  # Simple rescaling to facilitate learning
             if battle.opponent_active_pokemon[0] is not None:
                 for active_pokemon in battle.opponent_active_pokemon:
-                    if(active_pokemon!=None):
+                    if active_pokemon is not None:
                         moves_dmg_multiplier[3+j] = move.type.damage_multiplier(
                             active_pokemon.type_1,
                             active_pokemon.type_2,
-                            type_chart=active_pokemon._data.type_chart,
+                            type_chart=self.gen_data.type_chart, #new Poke-env updated version
                         )
         
 
