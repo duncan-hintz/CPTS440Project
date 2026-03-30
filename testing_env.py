@@ -22,5 +22,5 @@ def episode():
     parallel_env.close()
 
 if __name__ == "__main__":
-    #for i in range(10):
+    for i in range(10):
         episode()
