@@ -5,7 +5,7 @@ current observations:
 17: Fainted mon opponent
 18-End: Pokemon observations
 Current pokemon obs:
-active, current_hp_fraction, item, type_1, type_2
+active, current_hp_fraction, item, type_1, type_2, base_stats x6, status
 
 
 
@@ -28,7 +28,6 @@ DONE	TODO
 	boosts
 	effects??
 items
-	status
 	weather
 	side_conditions
 
@@ -72,7 +71,7 @@ item='unknown_item'
 		revealed
 		stab_multiplier
 		stats
-		status
+status
 		status_counter
 		tera_type
 types

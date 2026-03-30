@@ -11,6 +11,7 @@ from poke_env.environment.env import ObsType
 
 from poke_env.battle.pokemon import Pokemon
 from poke_env.battle.pokemon_type import PokemonType
+from poke_env.battle.status import Status
 
 from poke_env.ps_client import (
     AccountConfiguration,
@@ -156,6 +157,7 @@ class CustomEnv(DoublesEnv):
                     -1,
                     -1,
                     -1, #base stats unknown
+                    0, #no status
             ]
         
         #Embed mappings and check if they need to be updated to files:
@@ -174,7 +176,7 @@ class CustomEnv(DoublesEnv):
             with open(self.itemMapPath,"wb") as itemFile:
                 pickle.dump(self.item_dict, itemFile)
 
-        base_stat_out = [value if not value==None else -1 for value in pokemon.base_stats.values()]
+        base_stat_out = [value if not value is None else -1 for value in pokemon.base_stats.values()]
 
         return [
             pokemon.active,
@@ -188,6 +190,7 @@ class CustomEnv(DoublesEnv):
             base_stat_out[3],
             base_stat_out[4],
             base_stat_out[5],
+            (pokemon.status.value if not pokemon.status is None else 0),
         ]
     
     def embed_battle(self, battle: AbstractBattle) -> tuple[ObsType,dict[int:int]]:
