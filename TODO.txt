@@ -5,7 +5,7 @@ current observations:
 17: Fainted mon opponent
 18-End: Pokemon observations
 Current pokemon obs:
-active, current_hp_fraction, item, type_1, type_2, base_stats x6, status
+active, current_hp_fraction, item, type_1, type_2, base_stats x6, status, boosts x6
 
 
 
@@ -21,7 +21,7 @@ battle.weather={}
 battle.side_conditions={}
 battle.opponent_side_conditions={}
 
-need embed_maps for:
+might need embed_maps for:
 DONE	TODO
 
 	abilities
@@ -49,7 +49,7 @@ DONE	TODO
 		ability
 active
 base_stats
-		boosts
+boosts
 		current_hp
 current_hp_fraction
 		effects??
