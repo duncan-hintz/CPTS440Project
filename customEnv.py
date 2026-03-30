@@ -148,8 +148,14 @@ class CustomEnv(DoublesEnv):
                     0, #not active
                     1.0, #full hp
                     -1.0, #unknown_item
-                    PokemonType.THREE_QUESTION_MARKS.value,
-                    PokemonType.THREE_QUESTION_MARKS.value,
+                    PokemonType.THREE_QUESTION_MARKS.value, #type1 unknown
+                    PokemonType.THREE_QUESTION_MARKS.value, #type2 unknown
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1, #base stats unknown
             ]
         
         #Embed mappings and check if they need to be updated to files:
@@ -168,7 +174,7 @@ class CustomEnv(DoublesEnv):
             with open(self.itemMapPath,"wb") as itemFile:
                 pickle.dump(self.item_dict, itemFile)
 
-        
+        base_stat_out = [value if not value==None else -1 for value in pokemon.base_stats.values()]
 
         return [
             pokemon.active,
@@ -176,6 +182,12 @@ class CustomEnv(DoublesEnv):
             item,
             pokemon.type_1.value,
             (pokemon.type_2.value if not pokemon.type_2 is None else PokemonType.THREE_QUESTION_MARKS.value),
+            base_stat_out[0],
+            base_stat_out[1],
+            base_stat_out[2],
+            base_stat_out[3],
+            base_stat_out[4],
+            base_stat_out[5],
         ]
     
     def embed_battle(self, battle: AbstractBattle) -> tuple[ObsType,dict[int:int]]:

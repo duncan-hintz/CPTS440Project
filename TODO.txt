@@ -47,34 +47,34 @@ embed a single pokemon:
 pokemon-obj. :
 DONE	TODO
 
-	ability
+		ability
 active
-	base_stats
-	boosts
-	current_hp
+		base_stats
+		boosts
+		current_hp
 current_hp_fraction
-	effects??
-	fainted
-	first_turn
-	gender
-	is_terastallized
+		effects??
+		fainted
+		first_turn
+		gender
+		is_terastallized
 item='unknown_item'
-	level
-	max_hp
-	moves: move objs
-	must_recharge
-	original_types
-	possible_abilities
-	preparing
-	preparing_move
-	preparing_target
-	protect_counter
-	revealed
-	stab_multiplier
-	stats
-	status
-	status_counter
-	tera_type
+		level
+		max_hp
+		moves: move objs
+		must_recharge
+		original_types
+		possible_abilities
+		preparing
+		preparing_move
+		preparing_target
+		protect_counter
+		revealed
+		stab_multiplier
+		stats
+		status
+		status_counter
+		tera_type
 types
 
 
