@@ -1,0 +1,83 @@
+current observations:
+0-7: Move base power
+8-15: Move damage multiplier
+16: Fainted mon team
+17: Fainted mon opponent
+18-End: Pokemon observations
+Current pokemon obs:
+active, current_hp_fraction, item, type_1, type_2
+
+
+
+TODO:
+
+Tera:
+	battle.can_tera = [True,True]
+	tera-type?
+	opponent_used_tera
+
+battle.weather={}
+
+battle.side_conditions={}
+battle.opponent_side_conditions={}
+
+need embed_maps for:
+DONE	TODO
+
+	abilities
+	boosts
+	effects??
+items
+	status
+	weather
+	side_conditions
+
+moves embbedding:
+DONE	TODO
+	accuracy
+	boosts
+	breaks_protect
+	current_pp
+	crit_ratio
+	category..?
+	damage
+	MORE TODO
+
+embed a single pokemon:
+pokemon-obj. :
+DONE	TODO
+
+	ability
+active
+	base_stats
+	boosts
+	current_hp
+current_hp_fraction
+	effects??
+	fainted
+	first_turn
+	gender
+	is_terastallized
+item='unknown_item'
+	level
+	max_hp
+	moves: move objs
+	must_recharge
+	original_types
+	possible_abilities
+	preparing
+	preparing_move
+	preparing_target
+	protect_counter
+	revealed
+	stab_multiplier
+	stats
+	status
+	status_counter
+	tera_type
+types
+
+
+battle.team={'p1: Name':(pokemon-obj)}
+	
+battle.opponent_team={'p2: Latias':(pokemon-obj)}
