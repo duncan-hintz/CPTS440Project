@@ -9,6 +9,10 @@ from poke_env.battle import AbstractBattle
 from poke_env.battle.double_battle import DoubleBattle
 from poke_env.environment.env import ObsType
 
+from poke_env.battle.pokemon import Pokemon
+from poke_env.battle.pokemon_type import PokemonType
+from poke_env.battle.status import Status
+
 from poke_env.ps_client import (
     AccountConfiguration,
     LocalhostServerConfiguration,
@@ -21,6 +25,10 @@ from poke_env.data import GenData #poke-env update
 import webbrowser
 
 from time import sleep
+
+import pickle
+
+from collections import defaultdict
 
 class CustomEnv(DoublesEnv):
     metadata={}
@@ -73,6 +81,21 @@ class CustomEnv(DoublesEnv):
         }
         self.render_browser_open=False
         self.render_mode=render_mode
+
+        #Load in dicts
+        self.itemMapPath="mappings/itemDict.txt"
+        try:
+            with open(self.itemMapPath, "rb") as itemFile:
+                self.item_dict = pickle.load(itemFile)
+                self.item_dict = defaultdict(str,self.item_dict)
+        except:
+            self.item_dict=defaultdict(str)
+            self.item_dict['unknown_item']=-1
+            with open(self.itemMapPath,"wb") as itemFile:
+                pickle.dump(self.item_dict, itemFile)
+        
+        self.item_dict_index=len(self.item_dict)-1
+        
     
     def reset(self,seed=None,options=None):
         self.render_browser_open = False
@@ -118,6 +141,73 @@ class CustomEnv(DoublesEnv):
         action_mask_combined=np.array(action_mask_combined,dtype=np.int8)
         return action_mask_combined
 
+
+
+    def embed_pokemon(self, pokemon: Pokemon):
+        #current number of tracked observations, used for unknown pokemon
+        
+        if(pokemon==None):
+            #Default returns
+            return [
+                    0, #not active
+                    1.0, #full hp
+                    -1.0, #unknown_item
+                    PokemonType.THREE_QUESTION_MARKS.value, #type1 unknown
+                    PokemonType.THREE_QUESTION_MARKS.value, #type2 unknown
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1,
+                    -1, #base stats unknown
+                    0, #no status
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0, #No boosts
+            ]
+        
+        #Embed mappings and check if they need to be updated to files:
+
+        #Item:
+        if(pokemon.item in self.item_dict):
+            item=self.item_dict[pokemon.item]
+        else: #new item
+            item=self.item_dict_index
+            #add to dict
+            self.item_dict[pokemon.item]=self.item_dict_index
+            #increase index
+            self.item_dict_index=self.item_dict_index+1
+            #save to file now, avoids rewriting later if this run is terminated early
+            #Will be slow in first iterations, but cost nothing later once most items are added
+            with open(self.itemMapPath,"wb") as itemFile:
+                pickle.dump(self.item_dict, itemFile)
+
+        base_stat_out = [value if not value is None else -1 for value in pokemon.base_stats.values()]
+        boosts_out  = [boost if not boost is None else 0 for boost in pokemon.boosts.values()]
+
+        return [
+            pokemon.active,
+            pokemon.current_hp_fraction,
+            item,
+            pokemon.type_1.value,
+            (pokemon.type_2.value if not pokemon.type_2 is None else PokemonType.THREE_QUESTION_MARKS.value),
+            base_stat_out[0],
+            base_stat_out[1],
+            base_stat_out[2],
+            base_stat_out[3],
+            base_stat_out[4],
+            base_stat_out[5],
+            (pokemon.status.value if not pokemon.status is None else 0),
+            boosts_out[0],
+            boosts_out[1],
+            boosts_out[2],
+            boosts_out[3],
+            boosts_out[4],
+            boosts_out[5],
+        ]
     
     def embed_battle(self, battle: AbstractBattle) -> tuple[ObsType,dict[int:int]]:
         """
@@ -173,7 +263,22 @@ class CustomEnv(DoublesEnv):
             len([mon for mon in battle.opponent_team.values() if mon.fainted]) / 6
         )
 
+        
+        team_mons=[]
+        for self_mon in battle.team.values():
+            team_mons.append(self.embed_pokemon(self_mon))
 
+        team_mons=np.concatenate(team_mons)
+
+        opponent_mons=[]
+        for opp_mon in battle.opponent_team.values():
+            opponent_mons.append(self.embed_pokemon(opp_mon))
+
+        #if unknown on other mons:
+        for i in range(6-len(opponent_mons)):
+            opponent_mons.append(self.embed_pokemon(None))
+
+        opponent_mons=np.concatenate(opponent_mons)
 
         # Final vector with n components
         final_vector = np.concatenate(
@@ -181,6 +286,8 @@ class CustomEnv(DoublesEnv):
                 moves_base_power, #The eight available moves
                 moves_dmg_multiplier, #For each available move, the damage multiplier against the active pokemon
                 [fainted_mon_team, fainted_mon_opponent], #The fainted pokemon on each team
+                team_mons,
+                opponent_mons,
             ]
         )
 
@@ -238,5 +345,6 @@ class CustomEnv(DoublesEnv):
                         ]
                     ),
                 ),
-                end="\n" if self.battle1.finished else "\r",
+                end="\n",
+                # end="\n" if self.battle1.finished else "\r",
             )
