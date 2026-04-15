@@ -82,7 +82,24 @@ class CustomEnv(DoublesEnv):
         self.render_browser_open=False
         self.render_mode=render_mode
 
-        #Load in dicts
+        #Load in dicts:
+        """Generic to copy:
+
+        self.*REPLACE*MapPath="mappings/*REPLACE*Dict.txt"
+        try:
+            with open(self.*REPLACE*MapPath, "rb") as *REPLACE*File:
+                self.*REPLACE*_dict = pickle.load(*REPLACE*File)
+                self.*REPLACE*_dict = defaultdict(str,self.*REPLACE*_dict)
+        except:
+            self.*REPLACE*_dict=defaultdict(str)
+            with open(self.*REPLACE*MapPath,"wb") as *REPLACE*File:
+                pickle.dump(self.*REPLACE*_dict, *REPLACE*File)
+        
+        self.*REPLACE*_dict_index=len(self.*REPLACE*_dict)-1
+        """
+
+
+        #Item Dict
         self.itemMapPath="mappings/itemDict.txt"
         try:
             with open(self.itemMapPath, "rb") as itemFile:
@@ -91,10 +108,27 @@ class CustomEnv(DoublesEnv):
         except:
             self.item_dict=defaultdict(str)
             self.item_dict['unknown_item']=-1
+            self.item_dict['']=0
             with open(self.itemMapPath,"wb") as itemFile:
                 pickle.dump(self.item_dict, itemFile)
         
         self.item_dict_index=len(self.item_dict)-1
+
+        
+        #Ability Dict
+        self.abilityMapPath="mappings/abilityDict.txt"
+        try:
+            with open(self.abiilityMapPath, "rb") as abilityFile:
+                self.ability_dict = pickle.load(abilityFile)
+                self.ability_dict = defaultdict(str,self.ability_dict)
+        except:
+            self.ability_dict=defaultdict(str)
+            with open(self.abilityMapPath,"wb") as abilityFile:
+                pickle.dump(self.item_dict, abilityFile)
+        
+        self.ability_dict_index=len(self.ability_dict)-1
+        
+
         
     
     def reset(self,seed=None,options=None):
@@ -167,6 +201,16 @@ class CustomEnv(DoublesEnv):
                     0, #" "
                     0, #" "
                     0, #" "
+                    -1, #level unknown
+                    -1, #stats unknown
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    -1, #Max hp unknown
+                    -1, #Current hp unknown
+                    -1, #Unknown ability
             ]
         
         #Embed mappings and check if they need to be updated to files:
@@ -185,10 +229,23 @@ class CustomEnv(DoublesEnv):
             with open(self.itemMapPath,"wb") as itemFile:
                 pickle.dump(self.item_dict, itemFile)
 
+        #Ability:
+        if(pokemon.ability is None):
+            ability=-1
+        elif(pokemon.ability in self.ability_dict):
+            ability=self.ability_dict[pokemon.ability]
+        else:
+            ability=self.ability_dict_index
+            self.ability_dict[pokemon.ability]=self.ability_dict_index
+            self.ability_dict_index=self.ability_dict_index+1
+            with open(self.abilityMapPath,"wb") as abilityFile:
+                pickle.dump(self.ability_dict, abilityFile)
+
         base_stat_out = [value if not value is None else -1 for value in pokemon.base_stats.values()]
         boosts_out  = [boost if not boost is None else 0 for boost in pokemon.boosts.values()]
+        stats_out = [value if not value is None else -1 for value in pokemon.stats.values()]
 
-        return [
+        toReturn = [
             pokemon.active,
             pokemon.current_hp_fraction,
             item,
@@ -207,7 +264,19 @@ class CustomEnv(DoublesEnv):
             boosts_out[3],
             boosts_out[4],
             boosts_out[5],
+            pokemon.level,
+            stats_out[0],
+            stats_out[1],
+            stats_out[2],
+            stats_out[3],
+            stats_out[4],
+            stats_out[5],
+            pokemon.max_hp,
+            pokemon.current_hp,
+            ability,
         ]
+
+        return toReturn
     
     def embed_battle(self, battle: AbstractBattle):# -> tuple[ObsType,dict[int:int]]:
         """
