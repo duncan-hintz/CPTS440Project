@@ -124,7 +124,7 @@ class CustomEnv(DoublesEnv):
         except:
             self.ability_dict=defaultdict(str)
             with open(self.abilityMapPath,"wb") as abilityFile:
-                pickle.dump(self.item_dict, abilityFile)
+                pickle.dump(self.ability_dict, abilityFile)
         
         self.ability_dict_index=len(self.ability_dict)-1
         
