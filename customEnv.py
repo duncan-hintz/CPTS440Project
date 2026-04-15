@@ -288,6 +288,26 @@ class CustomEnv(DoublesEnv):
 
         :return: The embedding of the current battle state.
         """
+        if(battle==None):
+            #Used for len returns of size of embed
+            return np.concatenate(
+                [
+                    np.zeros(18),
+                    CustomEnv.embed_pokemon(None, None),
+                    CustomEnv.embed_pokemon(None, None),
+                    CustomEnv.embed_pokemon(None, None),
+                    CustomEnv.embed_pokemon(None, None),
+                    CustomEnv.embed_pokemon(None, None),
+                    CustomEnv.embed_pokemon(None, None),
+                    CustomEnv.embed_pokemon(None, None),
+                    CustomEnv.embed_pokemon(None, None),
+                    CustomEnv.embed_pokemon(None, None),
+                    CustomEnv.embed_pokemon(None, None),
+                    CustomEnv.embed_pokemon(None, None),
+                    CustomEnv.embed_pokemon(None, None),
+                ]
+                            )
+
         assert isinstance(battle, DoubleBattle)
 
         if(battle.finished):

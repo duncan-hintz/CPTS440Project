@@ -26,20 +26,22 @@ else:
     team1=None
     team2=None
 
+observation_num=len(CustomEnv.embed_battle(None,None))
+
 class Agent(nn.Module):
     def __init__(self, num_actions,mode=0):
         super().__init__()
         self.divisor=1
         self.network = nn.Sequential(
-            self._layer_init(nn.Linear(18, 32)),
+            self._layer_init(nn.Linear(observation_num, observation_num*2)),
             nn.ReLU(),
-            self._layer_init(nn.Linear(32, 64)),
+            self._layer_init(nn.Linear(observation_num*2, observation_num*4)),
             nn.ReLU(),
-            self._layer_init(nn.Linear(64, 128)),
+            self._layer_init(nn.Linear(observation_num*4, observation_num*8)),
             nn.ReLU(),
-            self._layer_init(nn.Linear(128, 256)),
+            self._layer_init(nn.Linear(observation_num*8, observation_num*16)),
             nn.ReLU(),
-            self._layer_init(nn.Linear(256, 36)),
+            self._layer_init(nn.Linear(observation_num*16, 36)),
             nn.ReLU(),
         )
         self.actor = self._layer_init(nn.Linear(36, num_actions), std=0.01)
@@ -64,9 +66,9 @@ class Agent(nn.Module):
         #x = (obs,mask)
         #unless checking, then x is just obs
         if(action is None):
-            hidden = self.network(x[0] / self.divisor)
+            hidden = self.network(x[0])# / self.divisor)
         else:
-            hidden = self.network(x / self.divisor)
+            hidden = self.network(x) #/ self.divisor)
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         
@@ -224,8 +226,6 @@ if __name__ == "__main__":
     
     #stack_size = 4
     #frame_size = (64, 64)
-
-    observation_num=18
     
     max_cycles = 125
     total_episodes = 1024
@@ -270,11 +270,15 @@ if __name__ == "__main__":
                 next_obs, info = env.reset(seed=42)
             else:
                 next_obs, info = env.reset(seed=None)
+
             # reset the episodic return
             total_episodic_return = 0
 
             # each episode has num_steps
             for step in range(0, max_cycles):
+                for player in next_obs:
+                    next_obs[player]=next_obs[player]['observation']
+                
                 # rollover the observation
                 if(mode==0):
                     p2mask=next_obs[env.possible_agents[1]]["action_mask"]
@@ -290,7 +294,6 @@ if __name__ == "__main__":
                 next_obs, rewards, terms, truncs, infos = env.step(
                     unbatchify(actions, env)
                 )
-
 
                 # add to episode storage
                 rb_obs[step] = obs[0]
@@ -428,9 +431,13 @@ if __name__ == "__main__":
                     obs, infos = env.reset(seed=42)
                 else:
                     obs, infos = env.reset(seed=None)
+                
                 terms = [False]
                 truncs = [False]
                 while not any(terms) and not any(truncs):
+                    for player in obs:
+                        obs[player]=obs[player]['observation']
+
                     if(mode==0):
                         p2mask=obs[env.possible_agents[1]]["action_mask"]
                     obs = batchify_obs(obs, device)
@@ -438,6 +445,7 @@ if __name__ == "__main__":
                     if(mode==0):
                         actions=torch.tensor((actions,env.action_space(env.possible_agents[1]).sample(mask=p2mask))).to(device)
                     obs, rewards, terms, truncs, infos = env.step(unbatchify(actions, env))
+                    
                     terms = [terms[a] for a in terms]
                     truncs = [truncs[a] for a in truncs]
             
