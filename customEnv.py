@@ -154,19 +154,19 @@ class CustomEnv(DoublesEnv):
                     -1.0, #unknown_item
                     PokemonType.THREE_QUESTION_MARKS.value, #type1 unknown
                     PokemonType.THREE_QUESTION_MARKS.value, #type2 unknown
-                    -1,
-                    -1,
-                    -1,
-                    -1,
-                    -1,
                     -1, #base stats unknown
-                    0, #no status
-                    0,
-                    0,
-                    0,
-                    0,
-                    0,
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    0, #No status
                     0, #No boosts
+                    0, #" "
+                    0, #" "
+                    0, #" "
+                    0, #" "
+                    0, #" "
             ]
         
         #Embed mappings and check if they need to be updated to files:
