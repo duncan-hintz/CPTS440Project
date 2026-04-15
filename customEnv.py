@@ -7,7 +7,7 @@ from gymnasium.spaces import Discrete
 
 from poke_env.battle import AbstractBattle
 from poke_env.battle.double_battle import DoubleBattle
-from poke_env.environment.env import ObsType
+#from poke_env.environment.env import ObsType
 
 from poke_env.battle.pokemon import Pokemon
 from poke_env.battle.pokemon_type import PokemonType
@@ -122,7 +122,7 @@ class CustomEnv(DoublesEnv):
         action_mask=np.array(action_mask,dtype=np.int8)
         action_mask2=np.array(action_mask2,dtype=np.int8)
         #Combine into a single dimensional array of all combinations
-        action_mask_combined=np.sum(np.array(np.meshgrid(action_mask, action_mask2)).T.reshape(-1, 2),axis=1)
+        action_mask_combined=np.sum(np.array(np.meshgrid(action_mask, action_mask2),dtype=np.int8).T.reshape(-1, 2),axis=1)
         #If only one choice was valid, mask the combination
         action_mask_combined[action_mask_combined <2]=0
         action_mask_combined[action_mask_combined==2]=1
@@ -209,7 +209,7 @@ class CustomEnv(DoublesEnv):
             boosts_out[5],
         ]
     
-    def embed_battle(self, battle: AbstractBattle) -> tuple[ObsType,dict[int:int]]:
+    def embed_battle(self, battle: AbstractBattle):# -> tuple[ObsType,dict[int:int]]:
         """
         Returns the embedding of the current battle state in a format compatible with
         the Gymnasium API.
@@ -296,7 +296,9 @@ class CustomEnv(DoublesEnv):
         if self.render_mode == "human":
             self.render()
 
-        return {"observations":np.float32(final_vector),"action_mask":action_mask}
+        toReturn={"observations":np.float32(final_vector),"action_mask":action_mask}
+
+        return toReturn
 
 
 

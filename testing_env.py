@@ -1,4 +1,5 @@
 from customEnv import CustomEnv
+import numpy as np
 
 def episode():
     #alt: "human"
@@ -6,11 +7,13 @@ def episode():
     parallel_env = CustomEnv(render_mode=render_mode)
     observations,info=parallel_env.reset()
 
-    while parallel_env.agents:
+    while parallel_env.agents:        
         #policy
         #Choose an action
         actions = {}
         for agent in parallel_env.agents:
+            #This line fixes changes made in poke-env v14 that breaks the old action mask and observations
+            observations[agent]=observations[agent]['observation']
             #This uses the sample function, which is random with a mask
             actions[agent]=parallel_env.action_space(agent).sample(mask=observations[agent]["action_mask"])
             
