@@ -186,8 +186,8 @@ class CustomEnv(DoublesEnv):
                     0, #not active
                     1.0, #full hp
                     -1.0, #unknown_item
-                    PokemonType.THREE_QUESTION_MARKS.value, #type1 unknown
-                    PokemonType.THREE_QUESTION_MARKS.value, #type2 unknown
+                    PokemonType.THREE_QUESTION_MARKS.value / 20, #type1 unknown
+                    PokemonType.THREE_QUESTION_MARKS.value / 20, #type2 unknown
                     -1, #base stats unknown
                     -1, #" "
                     -1, #" "
@@ -229,50 +229,53 @@ class CustomEnv(DoublesEnv):
             with open(self.itemMapPath,"wb") as itemFile:
                 pickle.dump(self.item_dict, itemFile)
 
+        if(not item == -1 or not item==0):
+            item = item/(self.item_dict_index-1)
+
         #Ability:
         if(pokemon.ability is None):
             ability=-1
         elif(pokemon.ability in self.ability_dict):
-            ability=self.ability_dict[pokemon.ability]
+            ability=self.ability_dict[pokemon.ability] / (self.ability_dict_index-1)
         else:
-            ability=self.ability_dict_index
+            ability=1
             self.ability_dict[pokemon.ability]=self.ability_dict_index
             self.ability_dict_index=self.ability_dict_index+1
             with open(self.abilityMapPath,"wb") as abilityFile:
                 pickle.dump(self.ability_dict, abilityFile)
 
-        base_stat_out = [value if not value is None else -1 for value in pokemon.base_stats.values()]
-        boosts_out  = [boost if not boost is None else 0 for boost in pokemon.boosts.values()]
-        stats_out = [value if not value is None else -1 for value in pokemon.stats.values()]
+        base_stat_out = [value/255 if not value is None else -1 for value in pokemon.base_stats.values()]
+        boosts_out  = [boost/8 if not boost is None else 0 for boost in pokemon.boosts.values()]
+        stats_out = [value/255 if not value is None else -1 for value in pokemon.stats.values()]
 
         toReturn = [
             pokemon.active,
             pokemon.current_hp_fraction,
             item,
-            pokemon.type_1.value,
-            (pokemon.type_2.value if not pokemon.type_2 is None else PokemonType.THREE_QUESTION_MARKS.value),
+            pokemon.type_1.value /19,
+            (pokemon.type_2.value if not pokemon.type_2 is None else PokemonType.THREE_QUESTION_MARKS.value) / 19,
             base_stat_out[0],
             base_stat_out[1],
             base_stat_out[2],
             base_stat_out[3],
             base_stat_out[4],
             base_stat_out[5],
-            (pokemon.status.value if not pokemon.status is None else 0),
+            (pokemon.status.value if not pokemon.status is None else 0)/6,
             boosts_out[0],
             boosts_out[1],
             boosts_out[2],
             boosts_out[3],
             boosts_out[4],
             boosts_out[5],
-            pokemon.level,
+            pokemon.level/100,
             stats_out[0],
             stats_out[1],
             stats_out[2],
             stats_out[3],
             stats_out[4],
             stats_out[5],
-            pokemon.max_hp,
-            pokemon.current_hp,
+            pokemon.max_hp/714,
+            pokemon.current_hp/714,
             ability,
         ]
 
@@ -290,23 +293,7 @@ class CustomEnv(DoublesEnv):
         """
         if(battle==None):
             #Used for len returns of size of embed
-            return np.concatenate(
-                [
-                    np.zeros(18),
-                    CustomEnv.embed_pokemon(None, None),
-                    CustomEnv.embed_pokemon(None, None),
-                    CustomEnv.embed_pokemon(None, None),
-                    CustomEnv.embed_pokemon(None, None),
-                    CustomEnv.embed_pokemon(None, None),
-                    CustomEnv.embed_pokemon(None, None),
-                    CustomEnv.embed_pokemon(None, None),
-                    CustomEnv.embed_pokemon(None, None),
-                    CustomEnv.embed_pokemon(None, None),
-                    CustomEnv.embed_pokemon(None, None),
-                    CustomEnv.embed_pokemon(None, None),
-                    CustomEnv.embed_pokemon(None, None),
-                ]
-                            )
+            return np.zeros(18+(12*(len(CustomEnv.embed_pokemon(None,None)))))
 
         assert isinstance(battle, DoubleBattle)
 

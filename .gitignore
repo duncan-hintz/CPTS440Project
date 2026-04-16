@@ -1,4 +1,7 @@
 .vscode/
+tmp
+tmp.pdf
+bad_viz.py
 
 ### Node ###
 # Logs

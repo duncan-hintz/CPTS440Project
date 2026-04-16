@@ -14,6 +14,10 @@ from poke_env import AccountConfiguration
 from tabulate import tabulate
 import asyncio
 
+#import bad_viz
+#import os
+#os.environ["PATH"] += os.pathsep + 'C:/Program Files/Graphviz/bin'
+
 fixed = True
 if(fixed):
     format="gen9doublesou"
@@ -33,9 +37,7 @@ class Agent(nn.Module):
         super().__init__()
         self.divisor=1
         self.network = nn.Sequential(
-            self._layer_init(nn.Linear(observation_num, observation_num*2)),
-            nn.ReLU(),
-            self._layer_init(nn.Linear(observation_num*2, observation_num*4)),
+            self._layer_init(nn.Linear(observation_num, observation_num*4)),
             nn.ReLU(),
             self._layer_init(nn.Linear(observation_num*4, observation_num*8)),
             nn.ReLU(),
@@ -66,13 +68,13 @@ class Agent(nn.Module):
         #x = (obs,mask)
         #unless checking, then x is just obs
         if(action is None):
-            hidden = self.network(x[0])# / self.divisor)
+            hidden = self.network(x[0]/ self.divisor)
         else:
-            hidden = self.network(x) #/ self.divisor)
+            hidden = self.network(x / self.divisor)
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         
-        probsCopy=Categorical(logits=logits)
+        #probsCopy=Categorical(logits=logits)
         if(action is None):
             #mask probs here
             if(not probs.probs[x[1]==1].any()):
@@ -207,6 +209,8 @@ class AlgoPlayer(Player):
         #Turn tuple of numbers into words processed by the env
         return DoublesEnv.action_to_order(action=actions,battle=battle)
 
+async def validation_games(p1,p2):
+    await p1.battle_against(p2, n_battles=1)
 
 if __name__ == "__main__":
     """
@@ -223,6 +227,7 @@ if __name__ == "__main__":
     clip_coef = 0.1
     gamma = 0.99
     batch_size = 32
+    lr=0.00001
     
     #stack_size = 4
     #frame_size = (64, 64)
@@ -245,7 +250,7 @@ if __name__ == "__main__":
 
     """ LEARNER SETUP """
     agent = Agent(num_actions=num_actions).to(device)
-    optimizer = optim.Adam(agent.parameters(), lr=0.0001, eps=1e-5)
+    optimizer = optim.Adam(agent.parameters(), lr=lr, eps=1e-5)
 
     """ ALGO LOGIC: EPISODE STORAGE"""
     end_step = 0
@@ -286,7 +291,7 @@ if __name__ == "__main__":
 
                 # get action from the agent
                 actions, logprobs, _, values = agent.get_action_and_value(obs)
-
+                
                 if(mode==0):
                     actions=torch.tensor((actions,env.action_space(env.possible_agents[1]).sample(mask=p2mask))).to(device)
 
@@ -388,7 +393,10 @@ if __name__ == "__main__":
                 loss = pg_loss - ent_coef * entropy_loss + v_loss * vf_coef
 
                 optimizer.zero_grad()
+                #get_dot=bad_viz.register_hooks(loss)
                 loss.backward()
+                #dot=get_dot()
+                #dot.save('tmp.dot')
                 optimizer.step()
 
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
@@ -460,7 +468,9 @@ if __name__ == "__main__":
         cross_evaluation = {
             p1.username: {p2.username: None for p2 in players} for p1 in players
         }
-        asyncio.run(rando.battle_against(myPlayer, n_battles=num_challenges))
+        for i in range(num_challenges):
+            asyncio.run(validation_games(rando,myPlayer))
+            print(f"Validation game {i} complete")
         
         cross_evaluation[rando.username][myPlayer.username]=rando.win_rate
         cross_evaluation[myPlayer.username][rando.username]=myPlayer.win_rate
