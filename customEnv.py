@@ -1,3 +1,5 @@
+import asyncio
+
 from poke_env.environment.doubles_env import DoublesEnv
 
 from typing import Optional, Union
@@ -133,6 +135,9 @@ class CustomEnv(DoublesEnv):
     
     def reset(self,seed=None,options=None):
         self.render_browser_open = False
+        if(not seed is None):
+            if hasattr(self.agent1.ps_client, "websocket"):
+                asyncio.run(self.agent1.ps_client.send_message(f"ebat reseed 00000,00000,00000,000{seed}"))
         return super().reset(seed=seed,options=options)
 
     def get_mask(self, battle: AbstractBattle):

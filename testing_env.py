@@ -2,10 +2,10 @@ from customEnv import CustomEnv
 import numpy as np
 
 def episode():
-    #alt: "human"
-    render_mode=None
+    #alt: "human", None
+    render_mode="human"
     parallel_env = CustomEnv(render_mode=render_mode)
-    observations,info=parallel_env.reset()
+    observations,info=parallel_env.reset(seed=42)
 
     while parallel_env.agents:        
         #policy
