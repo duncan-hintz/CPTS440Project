@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -14,7 +15,7 @@ from poke_env import AccountConfiguration
 from tabulate import tabulate
 import asyncio
 
-fixed = True
+fixed = False
 if(fixed):
     format="gen9doublesou"
     #Define the teams
@@ -31,7 +32,7 @@ class Agent(nn.Module):
         super().__init__()
         self.divisor=1
         self.network = nn.Sequential(
-            self._layer_init(nn.Linear(18, 32)),
+            self._layer_init(nn.Linear(48, 32)),
             nn.ReLU(),
             self._layer_init(nn.Linear(32, 64)),
             nn.ReLU(),
@@ -62,43 +63,17 @@ class Agent(nn.Module):
         else:
             hidden = self.network(x / self.divisor)
         logits = self.actor(hidden)
-        probs = Categorical(logits=logits)
-        
-        probsCopy=Categorical(logits=logits)
-        if(action is None):
-            #mask probs here
-            if(not probs.probs[x[1]==1].any()):
-                probs.probs=x[1]
-                probs.probs=probs.probs/x[1].sum()
-            else:
-                probs.probs=probs.probs*x[1]
-            probs.probs=torch.nan_to_num(probs.probs)
-            #Normalize back to sum to 1, needed to reapply to Categorical
-            if(self.mode==0):
-                probs.probs=probs.probs/probs.probs.sum()
-            else:
-                probs.probs[0] = probs.probs[0]/probs.probs[0].sum()
-                probs.probs[1] = probs.probs[1]/probs.probs[1].sum()
-            probs.probs=torch.nan_to_num(probs.probs)
 
-            #probs = Categorical(probs=probs.probs)
-            
-            #Need to filter for when turn is "wait"
-            
-            """if(env.battle1._wait):
-                if(self.mode==0):
-                    probs.probs[0]=1
-                else:
-                    probs.probs[0][0]=1  
-            if(self.mode!=0 and env.battle2._wait):
-                probs.probs[1][0]=1
-                """
-            
-            """if(not probs.probs.any()):
-                if(mode==0):
-                   probs.probs[0]=1
-                else:
-                   probs.probs[0][0]=1"""
+        if action is None:
+            # Apply action mask by setting invalid action logits to -inf.
+            # x[1] is the mask tensor: 1 = valid, 0 = invalid.
+            mask = x[1].bool()
+            # Safety fallback: if no valid actions in mask, allow all actions.
+            if not mask.any():
+                mask = torch.ones_like(mask)
+            logits = logits.masked_fill(~mask, float('-inf'))
+
+        probs = Categorical(logits=logits)
 
         if action is None:
              action = probs.sample()
@@ -219,7 +194,7 @@ if __name__ == "__main__":
     #stack_size = 4
     #frame_size = (64, 64)
 
-    observation_num=18
+    observation_num=48
     
     max_cycles = 125
     total_episodes = 1024
@@ -401,6 +376,7 @@ if __name__ == "__main__":
 
     #Save model
     state_path= "./models/setup"
+    os.makedirs(state_path, exist_ok=True)
     torch.save(agent.state_dict(), f"{state_path}/agent.pt")
 
     """ RENDER THE POLICY """
