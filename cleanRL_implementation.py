@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import torch
 import torch.nn as nn
@@ -14,7 +15,7 @@ from poke_env import AccountConfiguration
 from tabulate import tabulate
 import asyncio
 
-fixed = True
+fixed = False
 if(fixed):
     format="gen9doublesou"
     #Define the teams
@@ -31,7 +32,7 @@ class Agent(nn.Module):
         super().__init__()
         self.divisor=1
         self.network = nn.Sequential(
-            self._layer_init(nn.Linear(18, 32)),
+            self._layer_init(nn.Linear(48, 32)),
             nn.ReLU(),
             self._layer_init(nn.Linear(32, 64)),
             nn.ReLU(),
@@ -68,6 +69,16 @@ class Agent(nn.Module):
         else:
             hidden = self.network(x / self.divisor)
         logits = self.actor(hidden)
+
+        if action is None:
+            # Apply action mask by setting invalid action logits to -inf.
+            # x[1] is the mask tensor: 1 = valid, 0 = invalid.
+            mask = x[1].bool()
+            # Safety fallback: if no valid actions in mask, allow all actions.
+            if not mask.any():
+                mask = torch.ones_like(mask)
+            logits = logits.masked_fill(~mask, float('-inf'))
+
         probs = Categorical(logits=logits)
         
         probsCopy=Categorical(logits=logits)
@@ -225,7 +236,7 @@ if __name__ == "__main__":
     #stack_size = 4
     #frame_size = (64, 64)
 
-    observation_num=18
+    observation_num=48
     
     max_cycles = 125
     total_episodes = 1024

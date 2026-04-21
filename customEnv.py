@@ -23,6 +23,7 @@ from poke_env.teambuilder import Teambuilder
 from poke_env.data import GenData #poke-env update
 
 import webbrowser
+import hashlib
 
 from time import sleep
 
@@ -99,6 +100,7 @@ class CustomEnv(DoublesEnv):
     
     def reset(self,seed=None,options=None):
         self.render_browser_open = False
+        self._last_rendered_turn = -1
         return super().reset(seed=seed,options=options)
 
     def get_mask(self, battle: AbstractBattle):
@@ -110,7 +112,10 @@ class CustomEnv(DoublesEnv):
         #it does not account for invalid moves together (like double tera)
         for i in range(2):
             for order in battle.valid_orders[i]:
-                orderNum=DoublesEnv._order_to_action_individual(order=order,battle=battle,fake=False,pos=i)
+                try:
+                    orderNum=DoublesEnv._order_to_action_individual(order=order,battle=battle,fake=False,pos=i)
+                except ValueError:
+                    continue
                 if(i==0):
                     action_mask[orderNum]=1
                 else:
@@ -244,7 +249,7 @@ class CustomEnv(DoublesEnv):
                             type_chart=self.gen_data.type_chart, #new Poke-env updated version
                         )
         for j, move in enumerate(battle.available_moves[1]):
-            moves_base_power[3+j] = (
+            moves_base_power[4+j] = (
                 move.base_power / 100
             )  # Simple rescaling to facilitate learning
             if battle.opponent_active_pokemon[0] is not None:
@@ -255,7 +260,6 @@ class CustomEnv(DoublesEnv):
                             active_pokemon.type_2,
                             type_chart=self.gen_data.type_chart, #new Poke-env updated version
                         )
-        
 
         # We count how many pokemons have fainted in each team
         fainted_mon_team = len([mon for mon in battle.team.values() if mon.fainted]) / 6
@@ -294,7 +298,10 @@ class CustomEnv(DoublesEnv):
         action_mask=self.get_mask(battle)
 
         if self.render_mode == "human":
-            self.render()
+            turn = getattr(battle, 'turn', -1)
+            if turn != self._last_rendered_turn:
+                self._last_rendered_turn = turn
+                self.render()
 
         toReturn={"observations":np.float32(final_vector),"action_mask":action_mask}
 
@@ -316,9 +323,12 @@ class CustomEnv(DoublesEnv):
         if self.battle1 is not None:
             if(not self.render_browser_open):
                 url = "https://localhost.psim.us/" + self.battle1.battle_tag
-                webbrowser.open(url, new=0, autoraise=True)
+                try:
+                    webbrowser.open(url, new=0, autoraise=True)
+                    sleep(3)
+                except Exception:
+                    pass
                 self.render_browser_open = True
-                sleep(3)
 
             print(
                 "  Turn %4d. | [%s][%3d/%3dhp] %10.10s, [%3d/%3dhp] %10.10s - %10.10s [%3d%%hp], %10.10s[%3d%%hp][%s]"
