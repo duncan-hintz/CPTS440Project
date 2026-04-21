@@ -7,8 +7,11 @@ from gymnasium.spaces import Discrete
 
 from poke_env.battle import AbstractBattle
 from poke_env.battle.double_battle import DoubleBattle
-from poke_env.environment.env import ObsType
-from poke_env.data import GenData
+#from poke_env.environment.env import ObsType
+
+from poke_env.battle.pokemon import Pokemon
+from poke_env.battle.pokemon_type import PokemonType
+from poke_env.battle.status import Status
 
 from poke_env.ps_client import (
     AccountConfiguration,
@@ -17,53 +20,16 @@ from poke_env.ps_client import (
 )
 from poke_env.teambuilder import Teambuilder
 
+from poke_env.data import GenData #poke-env update
+
 import webbrowser
 import hashlib
 
 from time import sleep
 
-# --- Observation encoding helpers ---
+import pickle
 
-_WEATHER_MAP = {
-    "SUNNYDAY": 1/7, "RAINDANCE": 2/7, "SANDSTORM": 3/7,
-    "HAIL": 4/7, "SNOW": 4/7, "SNOWSTORM": 4/7,
-    "DESOLATELAND": 5/7, "PRIMORDIALSEA": 6/7, "DELTASTREAM": 7/7,
-}
-
-_TERRAIN_MAP = {
-    "ELECTRIC_TERRAIN": 1/4, "GRASSY_TERRAIN": 2/4,
-    "MISTY_TERRAIN": 3/4, "PSYCHIC_TERRAIN": 4/4,
-}
-
-_STATUS_MAP = {
-    "BRN": 1/6, "FRZ": 2/6, "PAR": 3/6,
-    "PSN": 4/6, "SLP": 5/6, "TOX": 6/6,
-}
-
-_HASH_NORM = 4096
-
-
-def _hp_fraction(mon) -> float:
-    """Returns current HP fraction (0.0 if fainted or not present)."""
-    if mon is None or mon.fainted:
-        return 0.0
-    return float(mon.current_hp_fraction)
-
-
-def _encode_status(mon) -> float:
-    """Encodes a Pokémon's status condition as a normalized float in [0, 1]."""
-    if mon is None or mon.status is None:
-        return 0.0
-    return _STATUS_MAP.get(mon.status.name, 0.0)
-
-
-def _encode_str(s) -> float:
-    """Deterministically hash-encodes a string (e.g. ability or item name) to [0, 1]."""
-    if not s:
-        return 0.0
-    h = int(hashlib.md5(s.encode()).hexdigest()[:8], 16) % _HASH_NORM
-    return h / _HASH_NORM
-
+from collections import defaultdict
 
 class CustomEnv(DoublesEnv):
     metadata={}
@@ -110,13 +76,27 @@ class CustomEnv(DoublesEnv):
             fake=fake,
             strict=strict,
         )
+        self.gen_data = GenData.from_format(battle_format) #poke-env update
         self.action_spaces = {
             agent: Discrete(107*107) for agent in self.possible_agents
         }
         self.render_browser_open=False
         self.render_mode=render_mode
-        self._type_chart = GenData.from_format(battle_format).type_chart
-        self._last_rendered_turn = -1
+
+        #Load in dicts
+        self.itemMapPath="mappings/itemDict.txt"
+        try:
+            with open(self.itemMapPath, "rb") as itemFile:
+                self.item_dict = pickle.load(itemFile)
+                self.item_dict = defaultdict(str,self.item_dict)
+        except:
+            self.item_dict=defaultdict(str)
+            self.item_dict['unknown_item']=-1
+            with open(self.itemMapPath,"wb") as itemFile:
+                pickle.dump(self.item_dict, itemFile)
+        
+        self.item_dict_index=len(self.item_dict)-1
+        
     
     def reset(self,seed=None,options=None):
         self.render_browser_open = False
@@ -147,7 +127,7 @@ class CustomEnv(DoublesEnv):
         action_mask=np.array(action_mask,dtype=np.int8)
         action_mask2=np.array(action_mask2,dtype=np.int8)
         #Combine into a single dimensional array of all combinations
-        action_mask_combined=np.sum(np.array(np.meshgrid(action_mask, action_mask2)).T.reshape(-1, 2),axis=1)
+        action_mask_combined=np.sum(np.array(np.meshgrid(action_mask, action_mask2),dtype=np.int8).T.reshape(-1, 2),axis=1)
         #If only one choice was valid, mask the combination
         action_mask_combined[action_mask_combined <2]=0
         action_mask_combined[action_mask_combined==2]=1
@@ -166,8 +146,75 @@ class CustomEnv(DoublesEnv):
         action_mask_combined=np.array(action_mask_combined,dtype=np.int8)
         return action_mask_combined
 
+
+
+    def embed_pokemon(self, pokemon: Pokemon):
+        #current number of tracked observations, used for unknown pokemon
+        
+        if(pokemon==None):
+            #Default returns
+            return [
+                    0, #not active
+                    1.0, #full hp
+                    -1.0, #unknown_item
+                    PokemonType.THREE_QUESTION_MARKS.value, #type1 unknown
+                    PokemonType.THREE_QUESTION_MARKS.value, #type2 unknown
+                    -1, #base stats unknown
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    0, #No status
+                    0, #No boosts
+                    0, #" "
+                    0, #" "
+                    0, #" "
+                    0, #" "
+                    0, #" "
+            ]
+        
+        #Embed mappings and check if they need to be updated to files:
+
+        #Item:
+        if(pokemon.item in self.item_dict):
+            item=self.item_dict[pokemon.item]
+        else: #new item
+            item=self.item_dict_index
+            #add to dict
+            self.item_dict[pokemon.item]=self.item_dict_index
+            #increase index
+            self.item_dict_index=self.item_dict_index+1
+            #save to file now, avoids rewriting later if this run is terminated early
+            #Will be slow in first iterations, but cost nothing later once most items are added
+            with open(self.itemMapPath,"wb") as itemFile:
+                pickle.dump(self.item_dict, itemFile)
+
+        base_stat_out = [value if not value is None else -1 for value in pokemon.base_stats.values()]
+        boosts_out  = [boost if not boost is None else 0 for boost in pokemon.boosts.values()]
+
+        return [
+            pokemon.active,
+            pokemon.current_hp_fraction,
+            item,
+            pokemon.type_1.value,
+            (pokemon.type_2.value if not pokemon.type_2 is None else PokemonType.THREE_QUESTION_MARKS.value),
+            base_stat_out[0],
+            base_stat_out[1],
+            base_stat_out[2],
+            base_stat_out[3],
+            base_stat_out[4],
+            base_stat_out[5],
+            (pokemon.status.value if not pokemon.status is None else 0),
+            boosts_out[0],
+            boosts_out[1],
+            boosts_out[2],
+            boosts_out[3],
+            boosts_out[4],
+            boosts_out[5],
+        ]
     
-    def embed_battle(self, battle: AbstractBattle) -> tuple[ObsType,dict[int:int]]:
+    def embed_battle(self, battle: AbstractBattle):# -> tuple[ObsType,dict[int:int]]:
         """
         Returns the embedding of the current battle state in a format compatible with
         the Gymnasium API.
@@ -195,11 +242,11 @@ class CustomEnv(DoublesEnv):
             )  # Simple rescaling to facilitate learning
             if battle.opponent_active_pokemon[0] is not None:
                 for active_pokemon in battle.opponent_active_pokemon:
-                    if(active_pokemon !=None):
+                    if active_pokemon is not None:
                         moves_dmg_multiplier[i] = move.type.damage_multiplier(
                             active_pokemon.type_1,
                             active_pokemon.type_2,
-                            type_chart=self._type_chart,
+                            type_chart=self.gen_data.type_chart, #new Poke-env updated version
                         )
         for j, move in enumerate(battle.available_moves[1]):
             moves_base_power[4+j] = (
@@ -207,11 +254,11 @@ class CustomEnv(DoublesEnv):
             )  # Simple rescaling to facilitate learning
             if battle.opponent_active_pokemon[0] is not None:
                 for active_pokemon in battle.opponent_active_pokemon:
-                    if(active_pokemon!=None):
-                        moves_dmg_multiplier[4+j] = move.type.damage_multiplier(
+                    if active_pokemon is not None:
+                        moves_dmg_multiplier[3+j] = move.type.damage_multiplier(
                             active_pokemon.type_1,
                             active_pokemon.type_2,
-                            type_chart=self._type_chart,
+                            type_chart=self.gen_data.type_chart, #new Poke-env updated version
                         )
 
         # We count how many pokemons have fainted in each team
@@ -220,106 +267,31 @@ class CustomEnv(DoublesEnv):
             len([mon for mon in battle.opponent_team.values() if mon.fainted]) / 6
         )
 
-        # --- damage on each team ---
-        # HP fraction for each active slot (own0, own1, opp0, opp1)
-        hp_fractions = np.array([
-            _hp_fraction(battle.active_pokemon[0]),
-            _hp_fraction(battle.active_pokemon[1]),
-            _hp_fraction(battle.opponent_active_pokemon[0]),
-            _hp_fraction(battle.opponent_active_pokemon[1]),
-        ], dtype=np.float32)
+        
+        team_mons=[]
+        for self_mon in battle.team.values():
+            team_mons.append(self.embed_pokemon(self_mon))
 
-        # --- field status (weather, terrain, entry hazards) ---
-        weather_val = 0.0
-        for w in battle.weather:
-            weather_val = _WEATHER_MAP.get(w.name, 0.0)
-            break
+        team_mons=np.concatenate(team_mons)
 
-        terrain_val = 0.0
-        for f in battle.fields:
-            v = _TERRAIN_MAP.get(f.name, 0.0)
-            if v > 0.0:
-                terrain_val = v
-                break
+        opponent_mons=[]
+        for opp_mon in battle.opponent_team.values():
+            opponent_mons.append(self.embed_pokemon(opp_mon))
 
-        own_sr, own_spikes = 0.0, 0.0
-        for sc, count in battle.side_conditions.items():
-            if sc.name == "STEALTH_ROCK":
-                own_sr = 1.0
-            elif sc.name == "SPIKES":
-                own_spikes = min(count, 3) / 3.0
+        #if unknown on other mons:
+        for i in range(6-len(opponent_mons)):
+            opponent_mons.append(self.embed_pokemon(None))
 
-        opp_sr, opp_spikes = 0.0, 0.0
-        for sc, count in battle.opponent_side_conditions.items():
-            if sc.name == "STEALTH_ROCK":
-                opp_sr = 1.0
-            elif sc.name == "SPIKES":
-                opp_spikes = min(count, 3) / 3.0
+        opponent_mons=np.concatenate(opponent_mons)
 
-        field_status = np.array(
-            [weather_val, terrain_val, own_sr, own_spikes, opp_sr, opp_spikes],
-            dtype=np.float32,
-        )
-
-        # --- active mon status conditions ---
-        active_status = np.array([
-            _encode_status(battle.active_pokemon[0]),
-            _encode_status(battle.active_pokemon[1]),
-            _encode_status(battle.opponent_active_pokemon[0]),
-            _encode_status(battle.opponent_active_pokemon[1]),
-        ], dtype=np.float32)
-
-        # --- other mon (bench) status conditions ---
-        active_ids = {id(m) for m in battle.active_pokemon if m is not None}
-        own_bench = [m for m in battle.team.values() if id(m) not in active_ids and not m.fainted]
-        opp_active_ids = {id(m) for m in battle.opponent_active_pokemon if m is not None}
-        opp_bench = [m for m in battle.opponent_team.values() if id(m) not in opp_active_ids and not m.fainted]
-
-        own_bench_status = [_encode_status(m) for m in own_bench[:4]]
-        while len(own_bench_status) < 4:
-            own_bench_status.append(0.0)
-        opp_bench_status = [_encode_status(m) for m in opp_bench[:4]]
-        while len(opp_bench_status) < 4:
-            opp_bench_status.append(0.0)
-        bench_status = np.array(own_bench_status + opp_bench_status, dtype=np.float32)
-
-        # --- active mon abilities (hash-encoded) ---
-        active_abilities = np.array([
-            _encode_str(battle.active_pokemon[0].ability if battle.active_pokemon[0] else None),
-            _encode_str(battle.active_pokemon[1].ability if battle.active_pokemon[1] else None),
-            _encode_str(battle.opponent_active_pokemon[0].ability if battle.opponent_active_pokemon[0] else None),
-            _encode_str(battle.opponent_active_pokemon[1].ability if battle.opponent_active_pokemon[1] else None),
-        ], dtype=np.float32)
-
-        # --- active mon items (hash-encoded) ---
-        active_items = np.array([
-            _encode_str(battle.active_pokemon[0].item if battle.active_pokemon[0] else None),
-            _encode_str(battle.active_pokemon[1].item if battle.active_pokemon[1] else None),
-            _encode_str(battle.opponent_active_pokemon[0].item if battle.opponent_active_pokemon[0] else None),
-            _encode_str(battle.opponent_active_pokemon[1].item if battle.opponent_active_pokemon[1] else None),
-        ], dtype=np.float32)
-
-        # Final vector — 48 components total:
-        #   [0:8]   move base powers (slot0: 0-3, slot1: 4-7)
-        #   [8:16]  type effectiveness (slot0: 8-11, slot1: 12-15)
-        #   [16:18] fainted fractions (own, opp)
-        #   [18:22] active HP fractions (own0, own1, opp0, opp1)
-        #   [22:28] field status (weather, terrain, own_SR, own_spikes, opp_SR, opp_spikes)
-        #   [28:32] active mon status (own0, own1, opp0, opp1)
-        #   [32:40] bench status (own x4, opp x4)
-        #   [40:44] active mon abilities
-        #   [44:48] active mon items
+        # Final vector with n components
         final_vector = np.concatenate(
             [
-                moves_base_power,
-                moves_dmg_multiplier,
-                [fainted_mon_team, fainted_mon_opponent],
-                hp_fractions,
-                field_status,
-                active_status,
-                bench_status,
-                active_abilities,
-                active_items,
+                moves_base_power, #The eight available moves
+                moves_dmg_multiplier, #For each available move, the damage multiplier against the active pokemon
+                [fainted_mon_team, fainted_mon_opponent], #The fainted pokemon on each team
+                team_mons,
+                opponent_mons,
             ]
         )
 
@@ -331,7 +303,9 @@ class CustomEnv(DoublesEnv):
                 self._last_rendered_turn = turn
                 self.render()
 
-        return {"observations":np.float32(final_vector),"action_mask":action_mask}
+        toReturn={"observations":np.float32(final_vector),"action_mask":action_mask}
+
+        return toReturn
 
 
 
@@ -383,5 +357,6 @@ class CustomEnv(DoublesEnv):
                         ]
                     ),
                 ),
-                end="\n" if self.battle1.finished else "\r",
+                end="\n",
+                # end="\n" if self.battle1.finished else "\r",
             )

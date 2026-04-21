@@ -1,6 +1,6 @@
 #Needed for playing
 from poke_env.player import Player
-from env.customEnv import CustomEnv
+from customEnv import CustomEnv
 from poke_env.environment import DoublesEnv
 
 #Needed for neural net specifically, could be replaced
@@ -13,7 +13,7 @@ class AlgoPlayer(Player):
 
         #NN Agent:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.agent=Agent(num_actions=num_actions).to(self.device)
+        self.agent=Agent(num_actions=num_actions,mode=1).to(self.device)
         self.agent.load_state_dict(torch.load(f"{state_path}/agent.pt",map_location=self.device))
         self.agent.eval()
 
