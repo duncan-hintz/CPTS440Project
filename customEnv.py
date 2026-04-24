@@ -120,7 +120,7 @@ class CustomEnv(DoublesEnv):
         #Ability Dict
         self.abilityMapPath="mappings/abilityDict.txt"
         try:
-            with open(self.abiilityMapPath, "rb") as abilityFile:
+            with open(self.abilityMapPath, "rb") as abilityFile:
                 self.ability_dict = pickle.load(abilityFile)
                 self.ability_dict = defaultdict(str,self.ability_dict)
         except:
