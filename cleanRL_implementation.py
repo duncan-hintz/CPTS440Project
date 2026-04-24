@@ -387,7 +387,7 @@ if __name__ == "__main__":
                         ((ratio - 1.0).abs() > clip_coef).float().mean().item()
                     ]
 
-                # normalize advantaegs
+                # normalize advantages
                 advantages = b_advantages[batch_index]
                 advantages = (advantages - advantages.mean()) / (
                     advantages.std() + 1e-8
@@ -540,6 +540,5 @@ if __name__ == "__main__":
         print(tabulate(table))
 
         print(
-        f"Player {myPlayer.username} won {myPlayer.n_won_battles} out of {myPlayer.n_finished_battles} played"
-)
+        f"Player {myPlayer.username} won {myPlayer.n_won_battles} out of {myPlayer.n_finished_battles} played")
 
