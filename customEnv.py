@@ -386,7 +386,7 @@ class CustomEnv(DoublesEnv):
 
     def calc_reward(self, battle) -> float:
         return self.reward_computing_helper(
-            battle, fainted_value=200.0, hp_value=10.0, victory_value=1000.0,status_value=7.0
+            battle, fainted_value=100.0, hp_value=100.0, victory_value=10.0,status_value=20.0
         )
     
     def step(self,actions):
