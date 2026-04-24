@@ -33,7 +33,7 @@ else:
 observation_num=len(CustomEnv.embed_battle(None,None))
 
 class Agent(nn.Module):
-    def __init__(self, num_actions,mode=0):
+    def __init__(self, num_actions,mode=0,player=1):
         super().__init__()
         self.divisor=1
         self.network = nn.Sequential(
@@ -96,11 +96,11 @@ class Agent(nn.Module):
             #Need to filter for when turn is "wait"
             
             if(self.mode!=1):
-                if(env.battle1._wait):
+                if((player==1 and env.battle1._wait) or (player==2 and env.battle2._wait)):
                     if(self.mode==0):
                         probs.probs[0]=1
                     else:
-                        probs.probs[0][0]=1  
+                        probs.probs[0][0]=1 
                 if(self.mode!=0 and env.battle2._wait):
                     probs.probs[1][0]=1
                     
@@ -140,7 +140,7 @@ def batchify_obs(obs, device,mode=0):
         mask = mask[0]
 
 
-    return (obs,mask)
+    return obs,mask
 
 def remove_mask(obs):
     obs = {a:obs[a]["observations"] for a in obs}
@@ -258,11 +258,13 @@ if __name__ == "__main__":
 
     """ LEARNER SETUP """
     agent = Agent(num_actions=num_actions).to(device)
+    agent.load_state_dict(torch.load(f"./models/testing/agent_last.pt",map_location=device))
     optimizer = optim.Adam(agent.parameters(), lr=lr, eps=1e-5)
 
     if(mode==1):
-        agent2 = Agent(num_actions=num_actions).to(device)
+        agent2 = Agent(num_actions=num_actions,player=2).to(device)
         agent2.load_state_dict(torch.load(f"./models/testing/agent_last.pt",map_location=device))
+        agent2.eval()
 
     """ ALGO LOGIC: EPISODE STORAGE"""
     end_step = 0
@@ -277,6 +279,9 @@ if __name__ == "__main__":
     rb_terms = torch.zeros((max_cycles, num_agents)).to(device)
     rb_values = torch.zeros((max_cycles, num_agents)).to(device)
 
+    wins=0
+    last10=[]
+    last50=[]
 
     """ TRAINING LOGIC """
     # train for n number of episodes
@@ -302,16 +307,15 @@ if __name__ == "__main__":
                     #get the mask for random sampling
                     p2mask=next_obs[env.possible_agents[1]]["action_mask"]
                     
-                obs = batchify_obs(obs=next_obs, device=device, mode=mode)
+                obs, mask = batchify_obs(obs=next_obs, device=device, mode=mode)
                 if(mode==1):
-                    obs2=(obs[0][1],obs[1][1])
-                    obs=(obs[0][0],obs[1][0])
+                    obs2=(obs[1],mask[1])
+                    obs=(obs[0],mask[0])
 
                 # get action from the agent
                 actions, logprobs, _, values = agent.get_action_and_value(obs)
                 if(mode==1):
                     actions2, logprobs2, _2, values2 = agent2.get_action_and_value(obs2)
-
                 if(mode==0):
                     actions=torch.tensor((actions,env.action_space(env.possible_agents[1]).sample(mask=p2mask))).to(device)
                 elif(mode==1):
@@ -422,17 +426,40 @@ if __name__ == "__main__":
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
-        print(f"Training episode {episode}")
-        print(f"Episodic Return: {np.mean(total_episodic_return)}")
-        print(f"Episode Length: {end_step}")
-        print("")
-        print(f"Value Loss: {v_loss.item()}")
-        print(f"Policy Loss: {pg_loss.item()}")
-        print(f"Old Approx KL: {old_approx_kl.item()}")
-        print(f"Approx KL: {approx_kl.item()}")
-        print(f"Clip Fraction: {np.mean(clip_fracs)}")
-        print(f"Explained Variance: {explained_var.item()}")
-        print("\n-------------------------------------------\n")
+        print(f"Training episode {episode+1}")
+        show_loss = False
+        if(show_loss):
+            print(f"Episodic Return: {np.mean(total_episodic_return)}")
+            print(f"Episode Length: {end_step}")
+            print("")
+            print(f"Value Loss: {v_loss.item()}")
+            print(f"Policy Loss: {pg_loss.item()}")
+            print(f"Old Approx KL: {old_approx_kl.item()}")
+            print(f"Approx KL: {approx_kl.item()}")
+            print(f"Clip Fraction: {np.mean(clip_fracs)}")
+            print(f"Explained Variance: {explained_var.item()}")
+            print("\n-------------------------------------------\n")
+        if(len(last10)==10):
+            last10.pop(0)
+        last10.append(env.battle1.won)
+        last10wr=len([w for w in last10 if w])/10.0
+        if(len(last50)==50):
+            last50.pop(0)
+        last50.append(env.battle1.won)
+        last50wr=len([w for w in last50 if w])/50.0
+        if(env.battle1.won):
+            print("Win")
+            wins=wins+1
+        else:
+            print("Loss")
+        wr=wins/(episode+1)   
+        print(f"Current WR: {wr*100}%")
+        print(f"Last 10 WR: {last10wr*100}%\n")
+        print(f"Last 50 WR: {last50wr*100}%\n")
+
+
+
+        
 
 
     #Save model
