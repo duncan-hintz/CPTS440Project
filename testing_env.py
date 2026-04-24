@@ -3,9 +3,9 @@ import numpy as np
 
 def episode():
     #alt: "human", None
-    render_mode="human"
+    render_mode=None
     parallel_env = CustomEnv(render_mode=render_mode)
-    observations,info=parallel_env.reset(seed=42)
+    observations,info=parallel_env.reset()
 
     while parallel_env.agents:        
         #policy
@@ -25,5 +25,5 @@ def episode():
     parallel_env.close()
 
 if __name__ == "__main__":
-    #for i in range(10):
+    for i in range(1000):
         episode()
