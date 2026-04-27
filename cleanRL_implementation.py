@@ -41,9 +41,9 @@ class Agent(nn.Module):
         self.network = nn.Sequential(
             self._layer_init(nn.Linear(observation_num, observation_num*4)),
             nn.ReLU(),
-            self._layer_init(nn.Linear(observation_num*4, observation_num*64)),
+            self._layer_init(nn.Linear(observation_num*4, observation_num*8)),
             nn.ReLU(),
-            self._layer_init(nn.Linear(observation_num*64, observation_num*16)),
+            self._layer_init(nn.Linear(observation_num*8, observation_num*16)),
             nn.ReLU(),
             self._layer_init(nn.Linear(observation_num*16, 36)),
             nn.ReLU(),
@@ -227,7 +227,7 @@ if __name__ == "__main__":
     0=random p2
     1=equal p2
     """
-    mode = 0
+    mode = 1
     
     
     """ALGO PARAMS"""
@@ -376,12 +376,12 @@ if __name__ == "__main__":
                 # select the indices we want to train on
                 end = start + batch_size
                 batch_index = b_index[start:end]
-
-                _, newlogprob, entropy, value = agent.get_action_and_value(
-                    b_obs[batch_index], b_actions.long()[batch_index]
-                )
-                logratio = newlogprob - b_logprobs[batch_index]
-                ratio = logratio.exp()
+                with torch.autograd.set_detect_anomaly(True):
+                    _, newlogprob, entropy, value = agent.get_action_and_value(
+                        b_obs[batch_index], b_actions.long()[batch_index]
+                    )
+                    logratio = newlogprob - b_logprobs[batch_index]
+                    ratio = logratio.exp()
 
                 with torch.no_grad():
                     # calculate approx_kl http://joschu.net/blog/kl-approx.html
@@ -417,14 +417,15 @@ if __name__ == "__main__":
                 v_loss = 0.5 * v_loss_max.mean()
 
                 entropy_loss = entropy.mean()
-                loss = pg_loss - ent_coef * entropy_loss + v_loss * vf_coef
+                with torch.autograd.set_detect_anomaly(True):
+                    loss = pg_loss - ent_coef * entropy_loss + v_loss * vf_coef
 
-                optimizer.zero_grad()
-                #get_dot=bad_viz.register_hooks(loss)
-                loss.backward()
-                #dot=get_dot()
-                #dot.save('tmp.dot')
-                optimizer.step()
+                    optimizer.zero_grad()
+                    #get_dot=bad_viz.register_hooks(loss)
+                    loss.backward()
+                    #dot=get_dot()
+                    #dot.save('tmp.dot')
+                    optimizer.step()
 
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
@@ -468,16 +469,16 @@ if __name__ == "__main__":
 
     #Save model
     torch.save(agent.state_dict(), f"{state_path}/agent.pt")
-
+    agent.eval()
     """ RENDER THE POLICY """
     render=True
     if(render):
         if(fixed):
             env = CustomEnv(account_configuration1=AccountConfiguration("Learning", None),account_configuration2=AccountConfiguration("Bot", None),battle_format=format,team=team1,render_mode="human")
         else:
-            env = CustomEnv(render_mode="human")
+            env = CustomEnv(account_configuration1=AccountConfiguration("Learning", None),account_configuration2=AccountConfiguration("Bot", None),battle_format=format,render_mode="human")
 
-        agent.eval()
+    
 
     with torch.no_grad():
         # render 1 episodes out
