@@ -305,21 +305,38 @@ if __name__ == "__main__":
                 for player in next_obs:
                     next_obs[player]=next_obs[player]['observation']
                 
-                # rollover the observation
+                
                 if(mode==0):
                     #get the mask for random sampling
                     p2mask=next_obs[env.possible_agents[1]]["action_mask"]
-                    
+                
+                waiting=[False,False]
+                waiting_index=0
+                for player in env.agents:
+                    if(next_obs[player]["wait"]):
+                       waiting[waiting_index]=True
+                       waiting_index = waiting_index+1
+
                 obs, mask = batchify_obs(obs=next_obs, device=device, mode=mode)
                 if(mode==1):
                     obs2=(obs[1],mask[1])
                     obs=obs[0]
                     mask=mask[0]
 
-                # get action from the agent
-                actions, logprobs, _, values = agent.get_action_and_value((obs,mask))
-                if(mode==1):
+                if(waiting[0]):
+                    #Change to wait
+                    actions=(0,0)
+                else:
+                    # get action from the agent
+                    actions, logprobs, _, values = agent.get_action_and_value((obs,mask))
+
+                if(waiting[1]):
+                    #set p2 to wait
+                    actions2=(0,0)
+                elif(mode==1):
                     actions2, logprobs2, _2, values2 = agent2.get_action_and_value(obs2)
+
+
                 if(mode==0):
                     actions=torch.tensor((actions,env.action_space(env.possible_agents[1]).sample(mask=p2mask))).to(device)
                 elif(mode==1):
@@ -330,16 +347,17 @@ if __name__ == "__main__":
                     unbatchify(actions, env)
                 )
 
-                # add to episode storage
-                rb_obs[step] = obs[0]
-                rb_rewards[step] = batchify(rewards, device)
-                rb_terms[step] = batchify(terms, device)
-                rb_actions[step]=actions[0]
-                rb_logprobs[step] = logprobs
-                rb_values[step] = values.flatten()
+                if(not waiting[0]):
+                    # add to episode storage
+                    rb_obs[step] = obs[0]
+                    rb_rewards[step] = batchify(rewards, device)
+                    rb_terms[step] = batchify(terms, device)
+                    rb_actions[step]=actions[0]
+                    rb_logprobs[step] = logprobs
+                    rb_values[step] = values.flatten()
 
-                # compute episodic return
-                total_episodic_return += rb_rewards[step].cpu().numpy()
+                    # compute episodic return
+                    total_episodic_return += rb_rewards[step].cpu().numpy()
 
                 # if we reach termination or truncation, end
                 if any([terms[a] for a in terms]) or any([truncs[a] for a in truncs]):

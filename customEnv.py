@@ -378,7 +378,11 @@ class CustomEnv(DoublesEnv):
         if self.render_mode == "human":
             self.render()
 
-        toReturn={"observations":np.float32(final_vector),"action_mask":action_mask}
+        wait=False
+        if(battle.wait):
+            wait=True
+
+        toReturn={"observations":np.float32(final_vector),"action_mask":action_mask, "wait":wait}
 
         return toReturn
 
