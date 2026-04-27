@@ -18,17 +18,19 @@ import asyncio
 #import os
 #os.environ["PATH"] += os.pathsep + 'C:/Program Files/Graphviz/bin'
 
-fixed = True
+fixed = False
 if(fixed):
     format="gen9doublesou"
     #Define the teams
     team1="""Charizard||LifeOrb|Blaze|hurricane,heatwave,scorchingsands,protect||85,,85,85,85,85|M|,0,,,,||82|,,,,,Fire]Malamar||SitrusBerry|Contrary|protect,trickroom,knockoff,superpower||85,85,85,85,85,|F|,,,,,0||80|,,,,,Fighting]Hydrapple||ChoiceSpecs|Regenerator|earthpower,leafstorm,gigadrain,dracometeor||85,,85,85,85,85|F|,0,,,,||85|,,,,,Fire]Tornadus||SitrusBerry|Prankster|knockoff,bleakwindstorm,tailwind,heatwave||85,85,85,85,85,85|M|||77|,,,,,Steel]Barraskewda||LifeOrb|PropellerTail|psychicfangs,waterfall,protect,closecombat||85,85,85,85,85,85|F|||85|,,,,,Fighting]Arcanine||HeavyDutyBoots|Intimidate|willowisp,flareblitz,closecombat,morningsun||85,85,85,85,85,85|M|||82|,,,,,Fighting"""
     team2 = """
     """
+    state_path="./models/testing/fixed_teams/"
 else:
     format="gen9randomdoublesbattle"
     team1=None
     team2=None
+    state_path="./models/testing/random_teams/"
 
 observation_num=len(CustomEnv.embed_battle(None,None))
 
@@ -39,9 +41,9 @@ class Agent(nn.Module):
         self.network = nn.Sequential(
             self._layer_init(nn.Linear(observation_num, observation_num*4)),
             nn.ReLU(),
-            self._layer_init(nn.Linear(observation_num*4, observation_num*8)),
+            self._layer_init(nn.Linear(observation_num*4, observation_num*64)),
             nn.ReLU(),
-            self._layer_init(nn.Linear(observation_num*8, observation_num*16)),
+            self._layer_init(nn.Linear(observation_num*64, observation_num*16)),
             nn.ReLU(),
             self._layer_init(nn.Linear(observation_num*16, 36)),
             nn.ReLU(),
@@ -225,7 +227,7 @@ if __name__ == "__main__":
     0=random p2
     1=equal p2
     """
-    mode = 1
+    mode = 0
     
     
     """ALGO PARAMS"""
@@ -258,12 +260,13 @@ if __name__ == "__main__":
 
     """ LEARNER SETUP """
     agent = Agent(num_actions=num_actions).to(device)
-    agent.load_state_dict(torch.load(f"./models/testing/agent_last.pt",map_location=device))
+    if(mode==1):
+        agent.load_state_dict(torch.load(f"{state_path}agent_last.pt",map_location=device))
     optimizer = optim.Adam(agent.parameters(), lr=lr, eps=1e-5)
 
     if(mode==1):
         agent2 = Agent(num_actions=num_actions,player=2).to(device)
-        agent2.load_state_dict(torch.load(f"./models/testing/agent_last.pt",map_location=device))
+        agent2.load_state_dict(torch.load(f"{state_path}agent_last.pt",map_location=device))
         agent2.eval()
 
     """ ALGO LOGIC: EPISODE STORAGE"""
@@ -310,10 +313,11 @@ if __name__ == "__main__":
                 obs, mask = batchify_obs(obs=next_obs, device=device, mode=mode)
                 if(mode==1):
                     obs2=(obs[1],mask[1])
-                    obs=(obs[0],mask[0])
+                    obs=obs[0]
+                    mask=mask[0]
 
                 # get action from the agent
-                actions, logprobs, _, values = agent.get_action_and_value(obs)
+                actions, logprobs, _, values = agent.get_action_and_value((obs,mask))
                 if(mode==1):
                     actions2, logprobs2, _2, values2 = agent2.get_action_and_value(obs2)
                 if(mode==0):
@@ -463,7 +467,6 @@ if __name__ == "__main__":
 
 
     #Save model
-    state_path= "./models/testing"
     torch.save(agent.state_dict(), f"{state_path}/agent.pt")
 
     """ RENDER THE POLICY """
@@ -475,8 +478,6 @@ if __name__ == "__main__":
             env = CustomEnv(render_mode="human")
 
         agent.eval()
-    
-    mode=1
 
     with torch.no_grad():
         # render 1 episodes out
