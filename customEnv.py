@@ -1,3 +1,5 @@
+import asyncio
+
 from poke_env.environment.doubles_env import DoublesEnv
 
 from typing import Optional, Union
@@ -82,7 +84,24 @@ class CustomEnv(DoublesEnv):
         self.render_browser_open=False
         self.render_mode=render_mode
 
-        #Load in dicts
+        #Load in dicts:
+        """Generic to copy:
+
+        self.*REPLACE*MapPath="mappings/*REPLACE*Dict.txt"
+        try:
+            with open(self.*REPLACE*MapPath, "rb") as *REPLACE*File:
+                self.*REPLACE*_dict = pickle.load(*REPLACE*File)
+                self.*REPLACE*_dict = defaultdict(str,self.*REPLACE*_dict)
+        except:
+            self.*REPLACE*_dict=defaultdict(str)
+            with open(self.*REPLACE*MapPath,"wb") as *REPLACE*File:
+                pickle.dump(self.*REPLACE*_dict, *REPLACE*File)
+        
+        self.*REPLACE*_dict_index=len(self.*REPLACE*_dict)-1
+        """
+
+
+        #Item Dict
         self.itemMapPath="mappings/itemDict.txt"
         try:
             with open(self.itemMapPath, "rb") as itemFile:
@@ -91,15 +110,36 @@ class CustomEnv(DoublesEnv):
         except:
             self.item_dict=defaultdict(str)
             self.item_dict['unknown_item']=-1
+            self.item_dict['']=0
             with open(self.itemMapPath,"wb") as itemFile:
                 pickle.dump(self.item_dict, itemFile)
         
         self.item_dict_index=len(self.item_dict)-1
+
+        
+        #Ability Dict
+        self.abilityMapPath="mappings/abilityDict.txt"
+        try:
+            with open(self.abilityMapPath, "rb") as abilityFile:
+                self.ability_dict = pickle.load(abilityFile)
+                self.ability_dict = defaultdict(str,self.ability_dict)
+        except:
+            self.ability_dict=defaultdict(str)
+            with open(self.abilityMapPath,"wb") as abilityFile:
+                pickle.dump(self.ability_dict, abilityFile)
+        
+        self.ability_dict_index=len(self.ability_dict)-1
+        
+
         
     
     def reset(self,seed=None,options=None):
         self.render_browser_open = False
-        return super().reset(seed=seed,options=options)
+        toReturn= super().reset(seed=seed,options=options)
+        """if(not seed is None):
+            if hasattr(self.agent1.ps_client, "websocket"):
+                asyncio.run(self.agent1.ps_client.send_message(f"ebat reseed 00000,00000,00000,000{seed}"))"""
+        return toReturn
 
     def get_mask(self, battle: AbstractBattle):
         #Initial action masking for gen 9, removing other gimmicks
@@ -152,8 +192,8 @@ class CustomEnv(DoublesEnv):
                     0, #not active
                     1.0, #full hp
                     -1.0, #unknown_item
-                    PokemonType.THREE_QUESTION_MARKS.value, #type1 unknown
-                    PokemonType.THREE_QUESTION_MARKS.value, #type2 unknown
+                    PokemonType.THREE_QUESTION_MARKS.value / 20, #type1 unknown
+                    PokemonType.THREE_QUESTION_MARKS.value / 20, #type2 unknown
                     -1, #base stats unknown
                     -1, #" "
                     -1, #" "
@@ -167,6 +207,16 @@ class CustomEnv(DoublesEnv):
                     0, #" "
                     0, #" "
                     0, #" "
+                    -1, #level unknown
+                    -1, #stats unknown
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    -1, #" "
+                    -1, #Max hp unknown
+                    -1, #Current hp unknown
+                    -1, #Unknown ability
             ]
         
         #Embed mappings and check if they need to be updated to files:
@@ -185,29 +235,57 @@ class CustomEnv(DoublesEnv):
             with open(self.itemMapPath,"wb") as itemFile:
                 pickle.dump(self.item_dict, itemFile)
 
-        base_stat_out = [value if not value is None else -1 for value in pokemon.base_stats.values()]
-        boosts_out  = [boost if not boost is None else 0 for boost in pokemon.boosts.values()]
+        if(not item == -1 or not item==0):
+            item = item/(self.item_dict_index-1)
 
-        return [
+        #Ability:
+        if(pokemon.ability is None):
+            ability=-1
+        elif(pokemon.ability in self.ability_dict):
+            ability=self.ability_dict[pokemon.ability] / (self.ability_dict_index-1)
+        else:
+            ability=1
+            self.ability_dict[pokemon.ability]=self.ability_dict_index
+            self.ability_dict_index=self.ability_dict_index+1
+            with open(self.abilityMapPath,"wb") as abilityFile:
+                pickle.dump(self.ability_dict, abilityFile)
+
+        base_stat_out = [value/255 if not value is None else -1 for value in pokemon.base_stats.values()]
+        boosts_out  = [boost/8 if not boost is None else 0 for boost in pokemon.boosts.values()]
+        stats_out = [value/255 if not value is None else -1 for value in pokemon.stats.values()]
+
+        toReturn = [
             pokemon.active,
             pokemon.current_hp_fraction,
             item,
-            pokemon.type_1.value,
-            (pokemon.type_2.value if not pokemon.type_2 is None else PokemonType.THREE_QUESTION_MARKS.value),
+            pokemon.type_1.value /19,
+            (pokemon.type_2.value if not pokemon.type_2 is None else PokemonType.THREE_QUESTION_MARKS.value) / 19,
             base_stat_out[0],
             base_stat_out[1],
             base_stat_out[2],
             base_stat_out[3],
             base_stat_out[4],
             base_stat_out[5],
-            (pokemon.status.value if not pokemon.status is None else 0),
+            (pokemon.status.value if not pokemon.status is None else 0)/6,
             boosts_out[0],
             boosts_out[1],
             boosts_out[2],
             boosts_out[3],
             boosts_out[4],
             boosts_out[5],
+            pokemon.level/100,
+            stats_out[0],
+            stats_out[1],
+            stats_out[2],
+            stats_out[3],
+            stats_out[4],
+            stats_out[5],
+            pokemon.max_hp/714,
+            pokemon.current_hp/714,
+            ability,
         ]
+
+        return toReturn
     
     def embed_battle(self, battle: AbstractBattle):# -> tuple[ObsType,dict[int:int]]:
         """
@@ -219,6 +297,10 @@ class CustomEnv(DoublesEnv):
 
         :return: The embedding of the current battle state.
         """
+        if(battle==None):
+            #Used for len returns of size of embed
+            return np.zeros(18+(12*(len(CustomEnv.embed_pokemon(None,None)))))
+
         assert isinstance(battle, DoubleBattle)
 
         if(battle.finished):
@@ -304,7 +386,7 @@ class CustomEnv(DoublesEnv):
 
     def calc_reward(self, battle) -> float:
         return self.reward_computing_helper(
-            battle, fainted_value=20.0, hp_value=10.0, victory_value=100.0,status_value=2.0
+            battle, fainted_value=100.0, hp_value=100.0, victory_value=10.0,status_value=20.0
         )
     
     def step(self,actions):

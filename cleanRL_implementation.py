@@ -14,32 +14,38 @@ from poke_env import AccountConfiguration
 from tabulate import tabulate
 import asyncio
 
-fixed = True
+#import bad_viz
+#import os
+#os.environ["PATH"] += os.pathsep + 'C:/Program Files/Graphviz/bin'
+
+fixed = False
 if(fixed):
     format="gen9doublesou"
     #Define the teams
     team1="""Charizard||LifeOrb|Blaze|hurricane,heatwave,scorchingsands,protect||85,,85,85,85,85|M|,0,,,,||82|,,,,,Fire]Malamar||SitrusBerry|Contrary|protect,trickroom,knockoff,superpower||85,85,85,85,85,|F|,,,,,0||80|,,,,,Fighting]Hydrapple||ChoiceSpecs|Regenerator|earthpower,leafstorm,gigadrain,dracometeor||85,,85,85,85,85|F|,0,,,,||85|,,,,,Fire]Tornadus||SitrusBerry|Prankster|knockoff,bleakwindstorm,tailwind,heatwave||85,85,85,85,85,85|M|||77|,,,,,Steel]Barraskewda||LifeOrb|PropellerTail|psychicfangs,waterfall,protect,closecombat||85,85,85,85,85,85|F|||85|,,,,,Fighting]Arcanine||HeavyDutyBoots|Intimidate|willowisp,flareblitz,closecombat,morningsun||85,85,85,85,85,85|M|||82|,,,,,Fighting"""
     team2 = """
     """
+    state_path="./models/testing/fixed_teams/"
 else:
     format="gen9randomdoublesbattle"
     team1=None
     team2=None
+    state_path="./models/testing/random_teams/"
+
+observation_num=len(CustomEnv.embed_battle(None,None))
 
 class Agent(nn.Module):
-    def __init__(self, num_actions,mode=0):
+    def __init__(self, num_actions,mode=0,player=1):
         super().__init__()
         self.divisor=1
         self.network = nn.Sequential(
-            self._layer_init(nn.Linear(18, 32)),
+            self._layer_init(nn.Linear(observation_num, observation_num*4)),
             nn.ReLU(),
-            self._layer_init(nn.Linear(32, 64)),
+            self._layer_init(nn.Linear(observation_num*4, observation_num*8)),
             nn.ReLU(),
-            self._layer_init(nn.Linear(64, 128)),
+            self._layer_init(nn.Linear(observation_num*8, observation_num*16)),
             nn.ReLU(),
-            self._layer_init(nn.Linear(128, 256)),
-            nn.ReLU(),
-            self._layer_init(nn.Linear(256, 36)),
+            self._layer_init(nn.Linear(observation_num*16, 36)),
             nn.ReLU(),
         )
         self.actor = self._layer_init(nn.Linear(36, num_actions), std=0.01)
@@ -64,13 +70,13 @@ class Agent(nn.Module):
         #x = (obs,mask)
         #unless checking, then x is just obs
         if(action is None):
-            hidden = self.network(x[0] / self.divisor)
+            hidden = self.network(x[0]/ self.divisor)
         else:
             hidden = self.network(x / self.divisor)
         logits = self.actor(hidden)
         probs = Categorical(logits=logits)
         
-        probsCopy=Categorical(logits=logits)
+        #probsCopy=Categorical(logits=logits)
         if(action is None):
             #mask probs here
             if(not probs.probs[x[1]==1].any()):
@@ -92,16 +98,16 @@ class Agent(nn.Module):
             #Need to filter for when turn is "wait"
             
             if(self.mode!=1):
-                if(env.battle1._wait):
+                if((player==1 and env.battle1._wait) or (player==2 and env.battle2._wait)):
                     if(self.mode==0):
                         probs.probs[0]=1
                     else:
-                        probs.probs[0][0]=1  
+                        probs.probs[0][0]=1 
                 if(self.mode!=0 and env.battle2._wait):
                     probs.probs[1][0]=1
                     
                 if(not probs.probs.any()):
-                    if(mode==0):
+                    if(self.mode==0):
                         probs.probs[0]=1
                     else:
                         probs.probs[0][0]=1
@@ -135,7 +141,8 @@ def batchify_obs(obs, device,mode=0):
         obs = obs[0]
         mask = mask[0]
 
-    return (obs,mask)
+
+    return obs,mask
 
 def remove_mask(obs):
     obs = {a:obs[a]["observations"] for a in obs}
@@ -144,6 +151,12 @@ def batchify(x, device,mode=0):
     """Converts PZ style returns to batch of torch arrays."""
     if(mode==0):
         x=x[env.possible_agents[0]]
+    elif(mode==1):
+        y=x[env.possible_agents[1]]
+        x=x[env.possible_agents[0]]
+        x=torch.tensor(x).to(device)
+        y=torch.tensor(y).to(device)
+        return(x,y)
     else:
         # convert to list of np arrays
         x = np.stack([x[a] for a in x], axis=0)
@@ -161,12 +174,12 @@ def unbatchify(x, env):
     return x
 
 class AlgoPlayer(Player):
-    def __init__(self,state_path,num_actions=11449,informat="gen9randomdoublesbattle",inteam=None):
+    def __init__(self,state_path,num_actions=11449,informat="gen9randomdoublesbattle",inteam=None, filename="agent.pt"):
 
         #NN Agent:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.agent=Agent(num_actions=num_actions).to(self.device)
-        self.agent.load_state_dict(torch.load(f"{state_path}/agent.pt",map_location=self.device))
+        self.agent.load_state_dict(torch.load(f"{state_path}/{filename}",map_location=self.device))
         self.agent.eval()
 
 
@@ -205,13 +218,16 @@ class AlgoPlayer(Player):
         #Turn tuple of numbers into words processed by the env
         return DoublesEnv.action_to_order(action=actions,battle=battle)
 
+async def validation_games(p1,p2):
+    await p1.battle_against(p2, n_battles=1)
 
 if __name__ == "__main__":
     """
     Modes:
     0=random p2
+    1=equal p2
     """
-    mode = 0
+    mode = 1
     
     
     """ALGO PARAMS"""
@@ -221,11 +237,10 @@ if __name__ == "__main__":
     clip_coef = 0.1
     gamma = 0.99
     batch_size = 32
+    lr=0.00001
     
     #stack_size = 4
     #frame_size = (64, 64)
-
-    observation_num=18
     
     max_cycles = 125
     total_episodes = 1024
@@ -245,7 +260,14 @@ if __name__ == "__main__":
 
     """ LEARNER SETUP """
     agent = Agent(num_actions=num_actions).to(device)
-    optimizer = optim.Adam(agent.parameters(), lr=0.0001, eps=1e-5)
+    if(mode==1):
+        agent.load_state_dict(torch.load(f"{state_path}agent_last.pt",map_location=device))
+    optimizer = optim.Adam(agent.parameters(), lr=lr, eps=1e-5)
+
+    if(mode==1):
+        agent2 = Agent(num_actions=num_actions,player=2).to(device)
+        agent2.load_state_dict(torch.load(f"{state_path}agent_last.pt",map_location=device))
+        agent2.eval()
 
     """ ALGO LOGIC: EPISODE STORAGE"""
     end_step = 0
@@ -260,6 +282,10 @@ if __name__ == "__main__":
     rb_terms = torch.zeros((max_cycles, num_agents)).to(device)
     rb_values = torch.zeros((max_cycles, num_agents)).to(device)
 
+    wins=0
+    last10=[]
+    last50=[]
+
     """ TRAINING LOGIC """
     # train for n number of episodes
     for episode in range(total_episodes):
@@ -270,36 +296,45 @@ if __name__ == "__main__":
                 next_obs, info = env.reset(seed=42)
             else:
                 next_obs, info = env.reset(seed=None)
+
             # reset the episodic return
             total_episodic_return = 0
 
             # each episode has num_steps
             for step in range(0, max_cycles):
+                for player in next_obs:
+                    next_obs[player]=next_obs[player]['observation']
+                
                 # rollover the observation
                 if(mode==0):
+                    #get the mask for random sampling
                     p2mask=next_obs[env.possible_agents[1]]["action_mask"]
-                obs = batchify_obs(next_obs, device)
+                    
+                obs, mask = batchify_obs(obs=next_obs, device=device, mode=mode)
+                if(mode==1):
+                    obs2=(obs[1],mask[1])
+                    obs=obs[0]
+                    mask=mask[0]
 
                 # get action from the agent
-                actions, logprobs, _, values = agent.get_action_and_value(obs)
-
+                actions, logprobs, _, values = agent.get_action_and_value((obs,mask))
+                if(mode==1):
+                    actions2, logprobs2, _2, values2 = agent2.get_action_and_value(obs2)
                 if(mode==0):
                     actions=torch.tensor((actions,env.action_space(env.possible_agents[1]).sample(mask=p2mask))).to(device)
+                elif(mode==1):
+                    actions=torch.tensor((actions,actions2)).to(device)
 
                 # execute the environment and log data
                 next_obs, rewards, terms, truncs, infos = env.step(
                     unbatchify(actions, env)
                 )
 
-
                 # add to episode storage
                 rb_obs[step] = obs[0]
                 rb_rewards[step] = batchify(rewards, device)
                 rb_terms[step] = batchify(terms, device)
-                if(mode==0):
-                    rb_actions[step]=actions[0]
-                else:
-                    rb_actions[step] = actions
+                rb_actions[step]=actions[0]
                 rb_logprobs[step] = logprobs
                 rb_values[step] = values.flatten()
 
@@ -341,12 +376,12 @@ if __name__ == "__main__":
                 # select the indices we want to train on
                 end = start + batch_size
                 batch_index = b_index[start:end]
-
-                _, newlogprob, entropy, value = agent.get_action_and_value(
-                    b_obs[batch_index], b_actions.long()[batch_index]
-                )
-                logratio = newlogprob - b_logprobs[batch_index]
-                ratio = logratio.exp()
+                with torch.autograd.set_detect_anomaly(True):
+                    _, newlogprob, entropy, value = agent.get_action_and_value(
+                        b_obs[batch_index], b_actions.long()[batch_index]
+                    )
+                    logratio = newlogprob - b_logprobs[batch_index]
+                    ratio = logratio.exp()
 
                 with torch.no_grad():
                     # calculate approx_kl http://joschu.net/blog/kl-approx.html
@@ -356,7 +391,7 @@ if __name__ == "__main__":
                         ((ratio - 1.0).abs() > clip_coef).float().mean().item()
                     ]
 
-                # normalize advantaegs
+                # normalize advantages
                 advantages = b_advantages[batch_index]
                 advantages = (advantages - advantages.mean()) / (
                     advantages.std() + 1e-8
@@ -382,42 +417,68 @@ if __name__ == "__main__":
                 v_loss = 0.5 * v_loss_max.mean()
 
                 entropy_loss = entropy.mean()
-                loss = pg_loss - ent_coef * entropy_loss + v_loss * vf_coef
+                with torch.autograd.set_detect_anomaly(True):
+                    loss = pg_loss - ent_coef * entropy_loss + v_loss * vf_coef
 
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+                    optimizer.zero_grad()
+                    #get_dot=bad_viz.register_hooks(loss)
+                    loss.backward()
+                    #dot=get_dot()
+                    #dot.save('tmp.dot')
+                    optimizer.step()
 
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
-        print(f"Training episode {episode}")
-        print(f"Episodic Return: {np.mean(total_episodic_return)}")
-        print(f"Episode Length: {end_step}")
-        print("")
-        print(f"Value Loss: {v_loss.item()}")
-        print(f"Policy Loss: {pg_loss.item()}")
-        print(f"Old Approx KL: {old_approx_kl.item()}")
-        print(f"Approx KL: {approx_kl.item()}")
-        print(f"Clip Fraction: {np.mean(clip_fracs)}")
-        print(f"Explained Variance: {explained_var.item()}")
-        print("\n-------------------------------------------\n")
+        print(f"Training episode {episode+1}")
+        show_loss = False
+        if(show_loss):
+            print(f"Episodic Return: {np.mean(total_episodic_return)}")
+            print(f"Episode Length: {end_step}")
+            print("")
+            print(f"Value Loss: {v_loss.item()}")
+            print(f"Policy Loss: {pg_loss.item()}")
+            print(f"Old Approx KL: {old_approx_kl.item()}")
+            print(f"Approx KL: {approx_kl.item()}")
+            print(f"Clip Fraction: {np.mean(clip_fracs)}")
+            print(f"Explained Variance: {explained_var.item()}")
+            print("\n-------------------------------------------\n")
+        if(len(last10)==10):
+            last10.pop(0)
+        last10.append(env.battle1.won)
+        last10wr=len([w for w in last10 if w])/10.0
+        if(len(last50)==50):
+            last50.pop(0)
+        last50.append(env.battle1.won)
+        last50wr=len([w for w in last50 if w])/50.0
+        if(env.battle1.won):
+            print("Win")
+            wins=wins+1
+        else:
+            print("Loss")
+        wr=wins/(episode+1)   
+        print(f"Current WR: {wr*100}%")
+        print(f"Last 10 WR: {last10wr*100}%\n")
+        print(f"Last 50 WR: {last50wr*100}%\n")
+
+
+
+        
 
 
     #Save model
-    state_path= "./models/testing"
     torch.save(agent.state_dict(), f"{state_path}/agent.pt")
-
+    agent.eval()
     """ RENDER THE POLICY """
     render=True
     if(render):
         if(fixed):
-            env = CustomEnv(account_configuration1=AccountConfiguration("Learning", None),account_configuration2=AccountConfiguration("Random", None),battle_format=format,team=team1,render_mode="human")
+            env = CustomEnv(account_configuration1=AccountConfiguration("Learning", None),account_configuration2=AccountConfiguration("Bot", None),battle_format=format,team=team1,render_mode="human")
         else:
-            env = CustomEnv(render_mode="human")
+            env = CustomEnv(account_configuration1=AccountConfiguration("Learning", None),account_configuration2=AccountConfiguration("Bot", None),battle_format=format,render_mode="human")
 
-        agent.eval()
+    
 
     with torch.no_grad():
         # render 1 episodes out
@@ -428,34 +489,51 @@ if __name__ == "__main__":
                     obs, infos = env.reset(seed=42)
                 else:
                     obs, infos = env.reset(seed=None)
+                
                 terms = [False]
                 truncs = [False]
                 while not any(terms) and not any(truncs):
+                    for player in obs:
+                        obs[player]=obs[player]['observation']
+
                     if(mode==0):
                         p2mask=obs[env.possible_agents[1]]["action_mask"]
-                    obs = batchify_obs(obs, device)
+                    obs = batchify_obs(obs, device,mode=mode)
+                    if(mode==1):
+                        obs2=(obs[0][1],obs[1][1])
+                        obs=(obs[0][0],obs[1][0])
                     actions, logprobs, _, values = agent.get_action_and_value(obs)
+                    if(mode==1):
+                        actions2, logprobs2, _2, values2 = agent2.get_action_and_value(obs)
                     if(mode==0):
                         actions=torch.tensor((actions,env.action_space(env.possible_agents[1]).sample(mask=p2mask))).to(device)
+                    elif(mode==1):
+                        actions=torch.tensor((actions,actions2)).to(device)
                     obs, rewards, terms, truncs, infos = env.step(unbatchify(actions, env))
+                    
                     terms = [terms[a] for a in terms]
                     truncs = [truncs[a] for a in truncs]
             
         
         #Create a random agent to simulate against
-        rando=RandomPlayer(battle_format=format,team=team1)
+        if(mode==0):
+            bot=RandomPlayer(battle_format=format,team=team1)
+        elif(mode==1):
+            bot=AlgoPlayer(state_path=state_path, informat=format,inteam=team1, filename="agent_last.pt")
         myPlayer = AlgoPlayer(state_path=state_path,informat=format,inteam=team1)
-        players=[rando,myPlayer]
+        players=[bot,myPlayer]
 
         num_challenges=1000
 
         cross_evaluation = {
             p1.username: {p2.username: None for p2 in players} for p1 in players
         }
-        asyncio.run(rando.battle_against(myPlayer, n_battles=num_challenges))
+        for i in range(num_challenges):
+            asyncio.run(validation_games(bot,myPlayer))
+            print(f"Validation game {i} complete")
         
-        cross_evaluation[rando.username][myPlayer.username]=rando.win_rate
-        cross_evaluation[myPlayer.username][rando.username]=myPlayer.win_rate
+        cross_evaluation[bot.username][myPlayer.username]=bot.win_rate
+        cross_evaluation[myPlayer.username][bot.username]=myPlayer.win_rate
 
         table = [["-"] + [p.username for p in players]]
         for p_1, results in cross_evaluation.items():
@@ -464,6 +542,5 @@ if __name__ == "__main__":
         print(tabulate(table))
 
         print(
-        f"Player {myPlayer.username} won {myPlayer.n_won_battles} out of {myPlayer.n_finished_battles} played"
-)
+        f"Player {myPlayer.username} won {myPlayer.n_won_battles} out of {myPlayer.n_finished_battles} played")
 

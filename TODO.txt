@@ -25,7 +25,6 @@ might need embed_maps for:
 DONE	TODO
 
 	abilities
-	boosts
 	effects??
 items
 	weather
@@ -45,12 +44,12 @@ DONE	TODO
 embed a single pokemon:
 pokemon-obj. :
 DONE	TODO
-
-		ability
+		base_species
+ability
 active
 base_stats
 boosts
-		current_hp
+current_hp
 current_hp_fraction
 		effects??
 		fainted
@@ -58,8 +57,8 @@ current_hp_fraction
 		gender
 		is_terastallized
 item='unknown_item'
-		level
-		max_hp
+level
+max_hp
 		moves: move objs
 		must_recharge
 		original_types
@@ -70,7 +69,7 @@ item='unknown_item'
 		protect_counter
 		revealed
 		stab_multiplier
-		stats
+stats
 status
 		status_counter
 		tera_type
