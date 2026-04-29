@@ -23,7 +23,7 @@ from poke_env.battle.status import Status
 #The below are used to replace double_battle.valid_orders
 from poke_env.battle.target import Target
 from poke_env.battle.effect import Effect
-from poke_env.battle.move import SPECIAL_MOVES, Move
+from poke_env.battle.move import SPECIAL_MOVES, Move, _PROTECT_MOVES
 from poke_env.battle.move_category import MoveCategory
 from poke_env.player.battle_order import (
     DefaultBattleOrder,
@@ -143,8 +143,24 @@ class CustomEnv(DoublesEnv):
             self.ability_dict=defaultdict(str)
             with open(self.abilityMapPath,"wb") as abilityFile:
                 pickle.dump(self.ability_dict, abilityFile)
-        
+
+                
         self.ability_dict_index=len(self.ability_dict)-1
+
+        #Move Dict
+        self.moveMapPath="mappings/moveDict.txt"
+        try:
+            with open(self.moveMapPath, "rb") as moveFile:
+                self.move_dict = pickle.load(moveFile)
+                self.move_dict = defaultdict(str,self.move_dict)
+        except:
+            self.move_dict=defaultdict(str)
+            with open(self.moveMapPath,"wb") as moveFile:
+                pickle.dump(self.move_dict, moveFile)
+
+                
+        self.move_dict_index=len(self.move_dict)-1
+        
 
         self.targetDictKeyList=[
                 Target.from_showdown_message("adjacentAlly"),
@@ -362,7 +378,7 @@ class CustomEnv(DoublesEnv):
 
     def get_action_mask(self, battle: AbstractBattle):
         if(battle.won):
-            return None
+            return
         #Initial action masking for gen 9, removing other gimmicks
         action_mask=[0,]*107
         action_mask2=[0,]*107
@@ -402,7 +418,40 @@ class CustomEnv(DoublesEnv):
         action_mask_combined=np.array(action_mask_combined,dtype=np.int8)
         return action_mask_combined
 
-
+    def embed_move(self, move:Move):
+        if(move==None):
+            return [
+                -1,
+                -1,
+                0,
+                1,
+                0,
+                0,
+                PokemonType.THREE_QUESTION_MARKS.value / 20,
+            ]
+        
+        if(move._id in self.move_dict):
+            id=self.move_dict[move._id]
+        else: #new move
+            id=self.move_dict_index
+            #add to dict
+            self.move_dict[move._id]=self.move_dict_index
+            #increase index
+            self.move_dict_index=self.move_dict_index+1
+            #save to file now, avoids rewriting later if this run is terminated early
+            #Will be slow in first iterations, but cost nothing later once most items are added
+            with open(self.moveMapPath,"wb") as moveFile:
+                pickle.dump(self.move_dict, moveFile)
+        entry = {"pp": 1, "type": "normal", "category": "Special", "accuracy": 1} if move._id in {"recharge", "fight"} else GenData.from_gen(move._gen).moves[move._id]
+        return[
+            id,
+            1.0 if entry["accuracy"] is True else entry["accuracy"]/100,
+            move._base_power_override if move._base_power_override is not None else entry.get("basePower", 0),
+            move.expected_hits,
+            int(move._id in _PROTECT_MOVES),
+            entry["priority"]/5,
+            PokemonType.from_name(entry["type"]).value/20,
+        ]
 
     def embed_pokemon(self, pokemon: Pokemon):
         #current number of tracked observations, used for unknown pokemon
@@ -438,6 +487,38 @@ class CustomEnv(DoublesEnv):
                     -1, #Max hp unknown
                     -1, #Current hp unknown
                     -1, #Unknown ability
+            ]+[
+                -1,
+                -1,
+                0,
+                1,
+                0,
+                0,
+                PokemonType.THREE_QUESTION_MARKS.value / 20,
+            ]+[
+                -1,
+                -1,
+                0,
+                1,
+                0,
+                0,
+                PokemonType.THREE_QUESTION_MARKS.value / 20,
+            ]+[
+                -1,
+                -1,
+                0,
+                1,
+                0,
+                0,
+                PokemonType.THREE_QUESTION_MARKS.value / 20,
+            ]+[
+                -1,
+                -1,
+                0,
+                1,
+                0,
+                0,
+                PokemonType.THREE_QUESTION_MARKS.value / 20,
             ]
         
         #Embed mappings and check if they need to be updated to files:
@@ -505,6 +586,12 @@ class CustomEnv(DoublesEnv):
             pokemon.current_hp/714,
             ability,
         ]
+        moveList=list(pokemon.base_moves.values())
+        for i in range(4):
+            if(i<len(moveList)):
+                toReturn = toReturn+self.embed_move(moveList[i])
+            else:
+                toReturn=toReturn+self.embed_move(None)
 
         return toReturn
     
@@ -624,7 +711,7 @@ class CustomEnv(DoublesEnv):
 
     def calc_reward(self, battle) -> float:
         return self.reward_computing_helper(
-            battle, fainted_value=100.0, hp_value=100.0, victory_value=10.0,status_value=20.0
+            battle, fainted_value=15.0, hp_value=10, victory_value=100.0,status_value=5
         )
     
     def step(self,actions):

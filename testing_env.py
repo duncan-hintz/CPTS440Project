@@ -4,7 +4,7 @@ import numpy as np
 def episode():
     #alt: "human", None
     render_mode=None
-    parallel_env = CustomEnv(render_mode=render_mode,fake=False)
+    parallel_env = CustomEnv(render_mode=render_mode)
     observations,info=parallel_env.reset()
 
     while parallel_env.agents:        
