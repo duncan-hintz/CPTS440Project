@@ -14,6 +14,8 @@ from poke_env.battle.double_battle import DoubleBattle
 from poke_env.battle.pokemon import Pokemon
 from poke_env.battle.pokemon_type import PokemonType
 from poke_env.battle.status import Status
+from poke_env.battle.weather import Weather
+from poke_env.battle.side_condition import SideCondition, STACKABLE_CONDITIONS
 
 from poke_env.ps_client import (
     AccountConfiguration,
@@ -287,6 +289,24 @@ class CustomEnv(DoublesEnv):
 
         return toReturn
     
+    # Weather enum values run 1–9; normalize by max value
+    _NUM_WEATHERS = max(w.value for w in Weather)
+    # Side conditions we track (ordered for stable indexing)
+    _SIDE_CONDITIONS = list(SideCondition)
+
+    def embed_weather(self, battle: AbstractBattle) -> float:
+        if not battle.weather:
+            return 0.0
+        weather = next(iter(battle.weather))
+        return weather.value / self._NUM_WEATHERS
+
+    def embed_side_conditions(self, conditions: dict) -> list:
+        out = []
+        for sc in self._SIDE_CONDITIONS:
+            max_stack = STACKABLE_CONDITIONS.get(sc, 1)
+            out.append(conditions.get(sc, 0) / max_stack)
+        return out
+
     def embed_battle(self, battle: AbstractBattle):# -> tuple[ObsType,dict[int:int]]:
         """
         Returns the embedding of the current battle state in a format compatible with
@@ -299,7 +319,8 @@ class CustomEnv(DoublesEnv):
         """
         if(battle==None):
             #Used for len returns of size of embed
-            return np.zeros(18+(12*(len(CustomEnv.embed_pokemon(None,None)))))
+            # 18 move/faint obs + 12 pokemon embeds + 1 weather + 2 * num_side_conditions
+            return np.zeros(18+(12*(len(CustomEnv.embed_pokemon(None,None))))+1+2*len(CustomEnv._SIDE_CONDITIONS))
 
         assert isinstance(battle, DoubleBattle)
 
@@ -326,13 +347,13 @@ class CustomEnv(DoublesEnv):
                             type_chart=self.gen_data.type_chart, #new Poke-env updated version
                         )
         for j, move in enumerate(battle.available_moves[1]):
-            moves_base_power[3+j] = (
+            moves_base_power[4+j] = (
                 move.base_power / 100
             )  # Simple rescaling to facilitate learning
             if battle.opponent_active_pokemon[0] is not None:
                 for active_pokemon in battle.opponent_active_pokemon:
                     if active_pokemon is not None:
-                        moves_dmg_multiplier[3+j] = move.type.damage_multiplier(
+                        moves_dmg_multiplier[4+j] = move.type.damage_multiplier(
                             active_pokemon.type_1,
                             active_pokemon.type_2,
                             type_chart=self.gen_data.type_chart, #new Poke-env updated version
@@ -362,6 +383,10 @@ class CustomEnv(DoublesEnv):
 
         opponent_mons=np.concatenate(opponent_mons)
 
+        weather_obs = [self.embed_weather(battle)]
+        side_cond_obs = self.embed_side_conditions(battle.side_conditions)
+        opp_side_cond_obs = self.embed_side_conditions(battle.opponent_side_conditions)
+
         # Final vector with n components
         final_vector = np.concatenate(
             [
@@ -370,6 +395,9 @@ class CustomEnv(DoublesEnv):
                 [fainted_mon_team, fainted_mon_opponent], #The fainted pokemon on each team
                 team_mons,
                 opponent_mons,
+                weather_obs,
+                side_cond_obs,
+                opp_side_cond_obs,
             ]
         )
 
