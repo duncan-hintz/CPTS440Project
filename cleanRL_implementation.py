@@ -14,6 +14,9 @@ from poke_env import AccountConfiguration
 from tabulate import tabulate
 import asyncio
 
+import cProfile
+from pstats import Stats
+
 #import bad_viz
 #import os
 #os.environ["PATH"] += os.pathsep + 'C:/Program Files/Graphviz/bin'
@@ -103,8 +106,8 @@ class Agent(nn.Module):
                         probs.probs[0]=1
                     else:
                         probs.probs[0][0]=1 
-                if(self.mode!=0 and env.battle2._wait):
-                    probs.probs[1][0]=1
+                else:
+                    probs.probs[0]=0
                     
                 if(not probs.probs.any()):
                     if(self.mode==0):
@@ -115,7 +118,6 @@ class Agent(nn.Module):
         if action is None:
              action = probs.sample()
         return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
-
 
 def batchify_obs(obs, device,mode=0):
     """Converts PZ style observations to batch of torch arrays."""
@@ -164,7 +166,6 @@ def batchify(x, device,mode=0):
     x = torch.tensor(x).to(device)
 
     return x
-
 
 def unbatchify(x, env):
     """Converts np array to PZ style arguments."""
@@ -222,12 +223,15 @@ async def validation_games(p1,p2):
     await p1.battle_against(p2, n_battles=1)
 
 if __name__ == "__main__":
+    #pr = cProfile.Profile()
+    #pr.enable()
+    
     """
     Modes:
     0=random p2
     1=equal p2
     """
-    mode = 1
+    mode = 0
     
     
     """ALGO PARAMS"""
@@ -243,7 +247,7 @@ if __name__ == "__main__":
     #frame_size = (64, 64)
     
     max_cycles = 125
-    total_episodes = 1024
+    total_episodes = 100
 
     """ ENV SETUP """
     if(fixed):
@@ -311,11 +315,10 @@ if __name__ == "__main__":
                     p2mask=next_obs[env.possible_agents[1]]["action_mask"]
                 
                 waiting=[False,False]
-                waiting_index=0
-                for player in env.agents:
-                    if(next_obs[player]["wait"]):
-                       waiting[waiting_index]=True
-                       waiting_index = waiting_index+1
+                if(next_obs[env.battle1.player_username]["wait"]):
+                    waiting[0]=True
+                elif(next_obs[env.battle2.player_username]["wait"]):
+                    waiting[1]=True
 
                 obs, mask = batchify_obs(obs=next_obs, device=device, mode=mode)
                 if(mode==1):
@@ -325,14 +328,14 @@ if __name__ == "__main__":
 
                 if(waiting[0]):
                     #Change to wait
-                    actions=(0,0)
+                    actions=0
                 else:
                     # get action from the agent
                     actions, logprobs, _, values = agent.get_action_and_value((obs,mask))
 
                 if(waiting[1]):
                     #set p2 to wait
-                    actions2=(0,0)
+                    actions2=0
                 elif(mode==1):
                     actions2, logprobs2, _2, values2 = agent2.get_action_and_value(obs2)
 
@@ -482,7 +485,9 @@ if __name__ == "__main__":
 
 
 
-        
+    #pr.disable()
+    #stats = Stats(pr)
+    #stats.sort_stats('tottime').print_stats(100)
 
 
     #Save model
@@ -541,7 +546,7 @@ if __name__ == "__main__":
         myPlayer = AlgoPlayer(state_path=state_path,informat=format,inteam=team1)
         players=[bot,myPlayer]
 
-        num_challenges=1000
+        num_challenges=100
 
         cross_evaluation = {
             p1.username: {p2.username: None for p2 in players} for p1 in players

@@ -1,8 +1,13 @@
 import asyncio
 
+import cProfile
+from pstats import Stats
+
+from functools import lru_cache
+
 from poke_env.environment.doubles_env import DoublesEnv
 
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 import numpy as np
 from gymnasium.spaces import Discrete
@@ -14,6 +19,17 @@ from poke_env.battle.double_battle import DoubleBattle
 from poke_env.battle.pokemon import Pokemon
 from poke_env.battle.pokemon_type import PokemonType
 from poke_env.battle.status import Status
+
+#The below are used to replace double_battle.valid_orders
+from poke_env.battle.target import Target
+from poke_env.battle.effect import Effect
+from poke_env.battle.move import SPECIAL_MOVES, Move
+from poke_env.battle.move_category import MoveCategory
+from poke_env.player.battle_order import (
+    DefaultBattleOrder,
+    PassBattleOrder,
+    SingleBattleOrder,
+)
 
 from poke_env.ps_client import (
     AccountConfiguration,
@@ -54,8 +70,8 @@ class CustomEnv(DoublesEnv):
         ping_timeout: Optional[float] = 20.0,
         challenge_timeout: Optional[float] = 60.0,
         team: Optional[Union[str, Teambuilder]] = None,
-        fake: bool = False,
-        strict: bool = False,
+        fake: bool = True,
+        strict: bool = True,
         render_mode: Optional[str] = None,
     ):
         super().__init__(
@@ -129,6 +145,42 @@ class CustomEnv(DoublesEnv):
                 pickle.dump(self.ability_dict, abilityFile)
         
         self.ability_dict_index=len(self.ability_dict)-1
+
+        self.targetDictKeyList=[
+                Target.from_showdown_message("adjacentAlly"),
+                Target.from_showdown_message("adjacentAllyOrSelf"),
+                Target.from_showdown_message("adjacentFoe"),
+                Target.from_showdown_message("all"),
+                Target.from_showdown_message("allAdjacent"),
+                Target.from_showdown_message("allAdjacentFoes"),
+                Target.from_showdown_message("allies"),
+                Target.from_showdown_message("allySide"),
+                Target.from_showdown_message("allyTeam"),
+                Target.from_showdown_message("any"),
+                Target.from_showdown_message("foeSide"),
+                Target.from_showdown_message("normal"),
+                Target.from_showdown_message("randomNormal"),
+                Target.from_showdown_message("scripted"),
+                Target.from_showdown_message("self"),
+                0,
+                None,
+        ]
+        self.targetDict={
+            self.targetDictKeyList[2]:[1,2],#adjacentFoe
+            self.targetDictKeyList[3]:[0],
+            self.targetDictKeyList[4]:[0],
+            self.targetDictKeyList[5]:[0],
+            self.targetDictKeyList[6]:[0],
+            self.targetDictKeyList[7]:[0],
+            self.targetDictKeyList[8]:[0],
+            self.targetDictKeyList[10]:[0],
+            self.targetDictKeyList[12]:[0],
+            self.targetDictKeyList[13]:[0],
+            self.targetDictKeyList[14]:[0],
+            self.targetDictKeyList[15]:[0],
+            self.targetDictKeyList[16]:[1,2],
+        }
+        #self.pr = cProfile.Profile()
         
 
         
@@ -141,7 +193,176 @@ class CustomEnv(DoublesEnv):
                 asyncio.run(self.agent1.ps_client.send_message(f"ebat reseed 00000,00000,00000,000{seed}"))"""
         return toReturn
 
-    def get_mask(self, battle: AbstractBattle):
+
+    @lru_cache(maxsize=1024)
+    def from_showdown_message(self, message: str):
+        message = message.replace("move: ", "").translate(str.maketrans({" ": "_", "-": "_"}))
+        
+        # manual CamelCase split (faster than regex)
+        tokens = []
+        current = []
+
+        for c in message:
+            if c.isupper() and current:
+                tokens.append("".join(current))
+                current = [c]
+            else:
+                current.append(c)
+
+        if current:
+            tokens.append("".join(current))
+
+        return Target["_".join(tokens).upper()]
+
+    def deduce_move_target(self,move,entry):
+        #Redo target
+        req_targ=self.from_showdown_message(entry["target"])
+        if "target" in entry:
+            targ=req_targ
+        else:
+            targ=None
+
+        if move.id in SPECIAL_MOVES:
+            return targ
+        elif req_targ:
+            return req_targ
+        elif targ == "randomNormal":
+            return req_targ
+        return targ
+
+    def get_possible_showdown_targets(
+        self,battle, move, pokemon: Pokemon, dynamax: bool = False
+    ):
+        """
+        Given move of an ALLY Pokemon, returns a list of possible Pokemon Showdown
+        targets for it. This is smart enough so that it figures whether the Pokemon
+        is already dynamaxed.
+
+        :param move: Move instance for which possible targets should be returned
+        :type move: Move
+        :param pokemon: The ally using the move.
+        :type pokemon: Pokemon
+        :param dynamax: whether given move also STARTS dynamax for its user
+        :return: a list of integers indicating Pokemon Showdown targets:
+            -1, -2, 1, 2 or self.EMPTY_TARGET_POSITION that indicates "no target"
+        :rtype: List[int]
+        """
+        #self.pr.enable()
+        if move._id in SPECIAL_MOVES:
+            #self.pr.disable()
+            return [0]
+
+        pokemon_1, pokemon_2 = battle._active_pokemon[f"{battle._player_role}a"], battle._active_pokemon[f"{battle._player_role}b"]
+        if pokemon_1 is None or not pokemon_1.active or pokemon_1.fainted:
+            pokemon_1 = None
+        if pokemon_2 is None or not pokemon_2.active or pokemon_2.fainted:
+            pokemon_2 = None
+        if pokemon == pokemon_1 and move._id in [m._id for m in battle.available_moves[0]]:
+            self_position = -1
+            ally_position = -2
+        elif pokemon == pokemon_2 and move._id in [
+            m._id for m in battle.available_moves[1]
+        ]:
+            self_position = -2
+            ally_position = -1
+        else:
+            raise Exception(
+                f"Selected move {move._id} is not owned by any active ally Pokemon "
+                f"that is currently battling"
+            )
+        entry= {"pp": 1, "type": "normal", "category": "Special", "accuracy": 1} if move._id in {"recharge", "fight"} else GenData.from_gen(move._gen).moves[move._id]
+        """if dynamax or pokemon.is_dynamaxed:
+            if MoveCategory[entry["category"].upper()] == MoveCategory.STATUS:
+                targets = [0]
+            else:
+                targets = [1, 2]
+        el"""
+        if "nonGhostTarget" in entry and (
+            PokemonType.GHOST not in pokemon.types
+        ):  # fixing target for Curse
+            targets = [0]
+        elif move._id == "pollenpuff" and Effect.HEAL_BLOCK in pokemon.effects:
+            targets = [1, 2]
+        elif (
+            move._id == "terastarstorm"
+            and not pokemon.fainted
+            and pokemon.is_terastallized
+            and pokemon.tera_type == PokemonType.STELLAR
+        ):
+            targets = [0]
+        else:
+            self.targetDict[self.targetDictKeyList[0]]=[ally_position]
+            self.targetDict[self.targetDictKeyList[1]]=[ally_position,self_position]
+            self.targetDict[self.targetDictKeyList[9]]=[ally_position,1,2]
+            self.targetDict[self.targetDictKeyList[11]]=[ally_position,1,2]
+            targets=self.targetDict[self.deduce_move_target(move,entry)]
+
+        pokemon_ids = set(battle._opponent_active_pokemon.keys())
+        pokemon_ids.update(battle._active_pokemon.keys())
+        if battle._player_role == "p1":
+            opp_role= "p2"
+        else:
+            opp_role= "p1"
+        targets_to_keep = {
+            {
+                f"{battle._player_role}a": -1,
+                f"{battle._player_role}b": -2,
+                f"{opp_role}a": 1,
+                f"{opp_role}b": 2,
+            }[pokemon_identifier]
+            for pokemon_identifier in pokemon_ids
+        }
+        targets_to_keep.add(0)
+        targets = [target for target in targets if target in targets_to_keep]
+        #self.pr.disable()
+        return targets
+
+    def valid_orders(self,battle):
+        orders: List[List[SingleBattleOrder]] = [[], []]
+        if battle._wait:
+            return [[DefaultBattleOrder()], [DefaultBattleOrder()]]
+        active_mon1 = battle._active_pokemon[f"{battle._player_role}a"]
+        active_mon2 = battle._active_pokemon[f"{battle._player_role}b"]
+        if active_mon1 is None or not active_mon1.active or active_mon1.fainted:
+                active_mon1 = None
+        if active_mon2 is None or not active_mon2.active or active_mon2.fainted:
+            active_mon2 = None
+        for i in range(2):
+            if any(battle.force_switch) and not battle.force_switch[i]:
+                orders[i] += [PassBattleOrder()]
+                continue
+            if not battle.trapped[i]:
+                orders[i] += [
+                    SingleBattleOrder(mon) for mon in battle.available_switches[i]
+                ]
+            if all(battle.force_switch) and len(battle.available_switches[0]) == 1:
+                orders[i] += [PassBattleOrder()]
+                continue
+            active_mon=[active_mon1,active_mon2][i]
+            if active_mon is not None and not battle.force_switch[i]:
+                orders[i] += [
+                    SingleBattleOrder(move, move_target=target)
+                    for move in battle.available_moves[i]
+                    for target in self.get_possible_showdown_targets(battle, move, active_mon)
+                ]
+                if battle.can_tera[i]:
+                    orders[i] += [
+                            SingleBattleOrder(move, move_target=target, terastallize=True)
+                            for move in battle.available_moves[i]
+                            for target in self.get_possible_showdown_targets(
+                                battle, move, active_mon
+                            )
+                        ]
+            if not orders[i]:
+                orders[i] += [PassBattleOrder()]
+        return orders
+
+    def get_action_mask_individual(battle: DoubleBattle, pos: int):
+        return None    
+
+    def get_action_mask(self, battle: AbstractBattle):
+        if(battle.won):
+            return None
         #Initial action masking for gen 9, removing other gimmicks
         action_mask=[0,]*107
         action_mask2=[0,]*107
@@ -149,8 +370,8 @@ class CustomEnv(DoublesEnv):
         #orders is in the form of [[Orders],[Orders]] where each nested list is the valid orders for each slot
         #it does not account for invalid moves together (like double tera)
         for i in range(2):
-            for order in battle.valid_orders[i]:
-                orderNum=DoublesEnv._order_to_action_individual(order=order,battle=battle,fake=False,pos=i)
+            for order in self.valid_orders(battle)[i]:
+                orderNum=DoublesEnv._order_to_action_individual(order=order,battle=battle,fake=self._fake,pos=i)
                 if(i==0):
                     action_mask[orderNum]=1
                 else:
@@ -306,6 +527,16 @@ class CustomEnv(DoublesEnv):
         if(battle.finished):
             return {"observations":None,"action_mask":None}
 
+        if(battle._player_role=="p1"):
+            opp_role="p2"
+        else:
+            opp_role="p1"
+        opp_active_mon=battle._opponent_active_pokemon[f"{opp_role}a"]
+        if opp_active_mon is None or not opp_active_mon.active or opp_active_mon.fainted:
+            opp_active_mon = None
+        opp_active_mon2=battle._opponent_active_pokemon[f"{opp_role}b"]
+        if opp_active_mon2 is None or not opp_active_mon2.active or opp_active_mon2.fainted:
+            opp_active_mon2 = None
         # -1 indicates that the move does not have a base power
         # or is not available
         moves_base_power = np.zeros(8)
@@ -317,8 +548,11 @@ class CustomEnv(DoublesEnv):
             moves_base_power[i] = (
                 move.base_power / 100
             )  # Simple rescaling to facilitate learning
-            if battle.opponent_active_pokemon[0] is not None:
-                for active_pokemon in battle.opponent_active_pokemon:
+            
+            
+            
+            if opp_active_mon is not None:
+                for active_pokemon in [opp_active_mon,opp_active_mon2]:
                     if active_pokemon is not None:
                         moves_dmg_multiplier[i] = move.type.damage_multiplier(
                             active_pokemon.type_1,
@@ -329,8 +563,8 @@ class CustomEnv(DoublesEnv):
             moves_base_power[3+j] = (
                 move.base_power / 100
             )  # Simple rescaling to facilitate learning
-            if battle.opponent_active_pokemon[0] is not None:
-                for active_pokemon in battle.opponent_active_pokemon:
+            if opp_active_mon is not None:
+                for active_pokemon in [opp_active_mon,opp_active_mon2]:
                     if active_pokemon is not None:
                         moves_dmg_multiplier[3+j] = move.type.damage_multiplier(
                             active_pokemon.type_1,
@@ -373,7 +607,7 @@ class CustomEnv(DoublesEnv):
             ]
         )
 
-        action_mask=self.get_mask(battle)
+        action_mask=self.get_action_mask(battle)
 
         if self.render_mode == "human":
             self.render()
