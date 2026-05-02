@@ -6,6 +6,11 @@ Demo For Final submission:
 It is important to note that due to the nature of this project running a node.js server, it is impossible to run on a single CoLab notebook. 
 Instructions for setting up a local version are in this document, and a video demonstration of the working code is at the following link:
  
+https://youtu.be/IT2O8cigtFQ
+
+Finally, due to Github file size restraints, we are unable to submit some weights from recent training on larger networks (100MB max, most weights are 300+ on recent versions)
+If this causes an issue of one module expecting a different node like in the AlgoPlayer demo, simply run cleanRL_implementation once with mode = 0, and the resulting weights will be saved locally.
+
 
 Dependencies:
 
