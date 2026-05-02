@@ -1,5 +1,12 @@
 # CPTS440Project
 
+Demo For Final submission:
+
+
+It is important to note that due to the nature of this project running a node.js server, it is impossible to run on a single CoLab notebook. 
+Instructions for setting up a local version are in this document, and a video demonstration of the working code is at the following link:
+ 
+
 Dependencies:
 
 node/npm
@@ -24,6 +31,15 @@ For an example game, run ./env/testing.py
 This will simulate one game with random input that can be viewed in the browser.
 This is good for debugging the customEnv class as it steps through moves in a battle.
 
-For an example of how to setup learning, check ./neural-net/cleanRL_implementation.py
+To run a batch of training, run /cleanRL_implementation.py
 
-For an example of how to setup a poke-env player, check ./neural-net/NN_AlgoPlayer.py, or look at the poke-env docs @ https://poke-env.readthedocs.io/en/stable/
+Recommended use of parameters in that file are:
+
+fixed=True
+
+Mode = 0
+
+
+For an example of how to setup a poke-env player, check ./neural-net/NN_AlgoPlayer.py \[DEPRECATED\], or look at the poke-env docs @ https://poke-env.readthedocs.io/en/stable/
+
+To run a demo against a human player, run NNAlgoPlayer_demo.py with the chosen username that is logged in to the local server.

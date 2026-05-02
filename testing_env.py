@@ -3,7 +3,7 @@ import numpy as np
 
 def episode():
     #alt: "human", None
-    render_mode=None
+    render_mode="human"
     parallel_env = CustomEnv(render_mode=render_mode)
     observations,info=parallel_env.reset()
 
@@ -25,5 +25,5 @@ def episode():
     parallel_env.close()
 
 if __name__ == "__main__":
-    for i in range(1000):
+    for i in range(1):
         episode()

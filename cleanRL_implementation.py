@@ -240,7 +240,7 @@ if __name__ == "__main__":
         0=random p2
         1=equal p2
         """
-        mode = 1
+        mode = 0
         
         
         """ALGO PARAMS"""
@@ -603,9 +603,9 @@ if __name__ == "__main__":
             print(
             f"Player {myPlayer.username} won {myPlayer.n_won_battles} out of {myPlayer.n_finished_battles} played")
 
-            if((myPlayer.n_won_battles/myPlayer.n_finished_battles)>=.60):
+            """if((myPlayer.n_won_battles/myPlayer.n_finished_battles)>=.60):
                 os.rename(f"{state_path}agent_last.pt",f"{state_path}agent_v1.{version}.pt")
                 os.rename(f"{state_path}/agent.pt",f"{state_path}/agent_last.pt")
                 version=version+1
-                iteration=iteration+1
+                iteration=iteration+1"""
 
